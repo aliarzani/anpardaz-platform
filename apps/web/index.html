@@ -4,6 +4,18 @@
     <!-- figma:head-start -->
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <style>
+      /* An Pardaz web: keep the desktop layout on narrow screens. */
+      html,
+      body,
+      #root {
+        min-width: 1280px;
+      }
+
+      body {
+        overflow-x: auto;
+      }
+    </style>
     <title><!-- figma:title --></title>
     <!-- figma:head-end -->
   </head>
@@ -11,6 +23,5 @@
     <!-- figma:body-start -->
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <!-- figma:body-end -->
   </body>
 </html>
