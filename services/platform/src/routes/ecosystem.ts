@@ -1,7 +1,7 @@
 import type {FastifyInstance,FastifyRequest} from 'fastify';
 import type {Pool} from 'pg';
-import {ensurePlatformUser,requireAuth} from '../auth.js';
-type R=FastifyRequest&{auth:{sub:string;email:string;role:string}};
+import {ensurePlatformUser,requireAuth,type AuthClaims} from '../auth.js';
+type R=FastifyRequest&{auth:AuthClaims};
 const auth=(r:FastifyRequest)=>r as R;
 const page=(q:any)=>{const p=Math.max(1,Number(q.page)||1),l=Math.min(100,Math.max(1,Number(q.limit)||20));return[p,l,(p-1)*l]};
 
