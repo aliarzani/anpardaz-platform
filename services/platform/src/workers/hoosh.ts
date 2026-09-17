@@ -26,14 +26,15 @@ async function processOne(){
  if(!r)return false;
  try{
   const result=await gateway.execute({workflowCode:'hoosh.chat',input:r.request_text,requesterIdentityId:r.identity_id,sourceType:'hoosh_request',sourceId:String(r.id)});
-  await pool.query('BEGIN').catch(()=>{});
+  const c=await pool.connect();
   try{
-   await pool.query('INSERT INTO hoosh_messages(conversation_id,role,content,metadata) VALUES($1,\'assistant\',$2,$3)',[r.conversation_id,result.text,JSON.stringify({provider:result.provider,model:result.model,requestId:r.id})]);
-   await pool.query('INSERT INTO hoosh_usage(identity_id,conversation_id,provider,model,input_tokens,output_tokens,cost,status) VALUES($1,$2,$3,$4,$5,$6,$7,\'completed\')',[r.identity_id,r.conversation_id,result.provider,result.model,result.inputTokens,result.outputTokens,result.cost]);
-   await pool.query("UPDATE hoosh_requests SET status='completed',provider=$1,model=$2,completed_at=NOW(),error=NULL WHERE id=$3",[result.provider,result.model,r.id]);
-   await pool.query('UPDATE hoosh_conversations SET updated_at=NOW() WHERE id=$1',[r.conversation_id]);
-   await pool.query('COMMIT');
-  }catch(e){await pool.query('ROLLBACK').catch(()=>{});throw e;}
+   await c.query('BEGIN');
+   await c.query('INSERT INTO hoosh_messages(conversation_id,role,content,metadata) VALUES($1,\'assistant\',$2,$3)',[r.conversation_id,result.text,JSON.stringify({provider:result.provider,model:result.model,requestId:r.id})]);
+   await c.query('INSERT INTO hoosh_usage(identity_id,conversation_id,provider,model,input_tokens,output_tokens,cost,status) VALUES($1,$2,$3,$4,$5,$6,$7,\'completed\')',[r.identity_id,r.conversation_id,result.provider,result.model,result.inputTokens,result.outputTokens,result.cost]);
+   await c.query("UPDATE hoosh_requests SET status='completed',provider=$1,model=$2,completed_at=NOW(),error=NULL WHERE id=$3",[result.provider,result.model,r.id]);
+   await c.query('UPDATE hoosh_conversations SET updated_at=NOW() WHERE id=$1',[r.conversation_id]);
+   await c.query('COMMIT');
+  }catch(e){await c.query('ROLLBACK').catch(()=>{});throw e;}finally{c.release();}
  }catch(e){
   await pool.query("UPDATE hoosh_requests SET status='failed',error=$1,completed_at=NOW() WHERE id=$2",[e instanceof Error?e.message:'AI_EXECUTION_FAILED',r.id]);
  }
