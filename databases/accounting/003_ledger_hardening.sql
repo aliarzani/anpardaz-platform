@@ -1,20 +1,10 @@
 BEGIN;
 
--- Posted ledger rows are immutable. Corrections must be represented by a new
--- reversal/adjustment transaction rather than changing historical entries.
 CREATE OR REPLACE FUNCTION reject_posted_ledger_mutation()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-  IF TG_TABLE_NAME = 'journal_transactions' AND OLD.status = 'posted' THEN
-    IF NEW.id IS DISTINCT FROM OLD.id
-      OR NEW.transaction_uuid IS DISTINCT FROM OLD.transaction_uuid
-      OR NEW.reference_type IS DISTINCT FROM OLD.reference_type
-      OR NEW.reference_id IS DISTINCT FROM OLD.reference_id
-      OR NEW.idempotency_key IS DISTINCT FROM OLD.idempotency_key
-      OR NEW.description IS DISTINCT FROM OLD.description
-      OR NEW.status IS DISTINCT FROM OLD.status
-      OR NEW.created_at IS DISTINCT FROM OLD.created_at
-      OR NEW.posted_at IS DISTINCT FROM OLD.posted_at THEN
+  IF TG_TABLE_NAME = 'journal_transactions' THEN
+    IF OLD.status = 'posted' AND (TG_OP = 'DELETE' OR NEW IS DISTINCT FROM OLD) THEN
       RAISE EXCEPTION 'posted journal transaction % is immutable', OLD.id;
     END IF;
   ELSIF TG_TABLE_NAME = 'journal_entries' THEN
@@ -22,21 +12,15 @@ BEGIN
       RAISE EXCEPTION 'entries of posted journal transaction % are immutable', OLD.journal_transaction_id;
     END IF;
   END IF;
+  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
   RETURN NEW;
 END $$;
 
 DROP TRIGGER IF EXISTS trg_journal_transactions_immutable ON journal_transactions;
-CREATE TRIGGER trg_journal_transactions_immutable
-BEFORE UPDATE OR DELETE ON journal_transactions
-FOR EACH ROW EXECUTE FUNCTION reject_posted_ledger_mutation();
-
+CREATE TRIGGER trg_journal_transactions_immutable BEFORE UPDATE OR DELETE ON journal_transactions FOR EACH ROW EXECUTE FUNCTION reject_posted_ledger_mutation();
 DROP TRIGGER IF EXISTS trg_journal_entries_immutable ON journal_entries;
-CREATE TRIGGER trg_journal_entries_immutable
-BEFORE UPDATE OR DELETE ON journal_entries
-FOR EACH ROW EXECUTE FUNCTION reject_posted_ledger_mutation();
+CREATE TRIGGER trg_journal_entries_immutable BEFORE UPDATE OR DELETE ON journal_entries FOR EACH ROW EXECUTE FUNCTION reject_posted_ledger_mutation();
 
--- Every journal entry in one transaction must use the same currency. FX is
--- represented by separate balanced transactions with explicit references.
 CREATE OR REPLACE FUNCTION assert_journal_currency_consistent(p_transaction_id BIGINT)
 RETURNS VOID LANGUAGE plpgsql AS $$
 DECLARE c INTEGER;
@@ -50,17 +34,11 @@ RETURNS VOID LANGUAGE plpgsql AS $$
 DECLARE debit_total NUMERIC(38,18); credit_total NUMERIC(38,18);
 BEGIN
   PERFORM assert_journal_currency_consistent(p_transaction_id);
-  SELECT COALESCE(SUM(amount) FILTER(WHERE direction='debit'),0),
-         COALESCE(SUM(amount) FILTER(WHERE direction='credit'),0)
-    INTO debit_total,credit_total
-    FROM journal_entries WHERE journal_transaction_id=p_transaction_id;
-  IF debit_total=0 OR debit_total<>credit_total THEN
-    RAISE EXCEPTION 'journal transaction % is not balanced',p_transaction_id;
-  END IF;
+  SELECT COALESCE(SUM(amount) FILTER(WHERE direction='debit'),0),COALESCE(SUM(amount) FILTER(WHERE direction='credit'),0) INTO debit_total,credit_total FROM journal_entries WHERE journal_transaction_id=p_transaction_id;
+  IF debit_total=0 OR debit_total<>credit_total THEN RAISE EXCEPTION 'journal transaction % is not balanced',p_transaction_id; END IF;
 END $$;
 
 CREATE INDEX IF NOT EXISTS idx_holds_account_status ON ledger_holds(ledger_account_id,status,created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_holds_active_reference ON ledger_holds(reference_type,reference_id) WHERE status='active';
-
 INSERT INTO schema_migrations(version) VALUES('003_ledger_hardening') ON CONFLICT(version) DO NOTHING;
 COMMIT;
