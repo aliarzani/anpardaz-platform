@@ -11,7 +11,8 @@ make_service_env() {
   local dbport="$4"
   local user="$5"
   local password="$6"
-  local file="services/${service}/.env"
+  local file
+  file="services/${service}/.env"
   if [[ ! -f "$file" ]]; then
     cp "services/${service}/.env.example" "$file"
     sed -i "s#^PORT=.*#PORT=${port}#; s#^DATABASE_URL=.*#DATABASE_URL=postgresql://${user}:${password}@localhost:${dbport}/${db}#" "$file"
