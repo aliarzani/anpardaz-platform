@@ -21,6 +21,8 @@ jobs:
             path: services/platform
           - name: accounting-service
             path: services/accounting
+          - name: accounting-client
+            path: packages/accounting-client
           - name: mobile
             path: apps/mobile
           - name: web
@@ -38,6 +40,7 @@ jobs:
           node-version: 24
           cache: pnpm
           cache-dependency-path: |
+            pnpm-lock.yaml
             apps/mobile/pnpm-lock.yaml
             apps/web/pnpm-lock.yaml
       - name: Install dependencies
