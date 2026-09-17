@@ -18,7 +18,7 @@ BEGIN
   SELECT COALESCE(SUM(quantity),0) INTO filled_quantity
   FROM trades
   WHERE order_id=NEW.order_id
-    AND id<>COALESCE(NEW.id,0);
+    AND id<>NEW.id;
 
   IF filled_quantity + NEW.quantity > order_quantity THEN
     RAISE EXCEPTION 'trade_quantity_exceeds_order';
