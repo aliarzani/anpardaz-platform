@@ -1,39 +1,7 @@
 BEGIN;
 
-CREATE TABLE IF NOT EXISTS community_rate_buckets (
-  bucket_start TIMESTAMPTZ NOT NULL,
-  bucket_key TEXT NOT NULL,
-  action TEXT NOT NULL,
-  hits INTEGER NOT NULL DEFAULT 0 CHECK(hits >= 0),
-  PRIMARY KEY(bucket_start,bucket_key,action)
-);
-
-CREATE TABLE IF NOT EXISTS guest_interaction_blocks (
-  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  guest_token_hash TEXT NOT NULL UNIQUE,
-  reason TEXT,
-  blocked_by UUID,
-  expires_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CHECK(expires_at IS NULL OR expires_at > created_at)
-);
-
-CREATE TABLE IF NOT EXISTS community_reports (
-  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  reporter_identity_id UUID,
-  reporter_guest_token_hash TEXT,
-  target_type TEXT NOT NULL CHECK(target_type IN ('comment','like','news','banner','market_product','forum_thread','forum_post','content')),
-  target_id TEXT NOT NULL,
-  reason TEXT NOT NULL CHECK(length(trim(reason)) BETWEEN 1 AND 500),
-  details TEXT,
-  status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','reviewing','resolved','rejected')),
-  resolution TEXT,
-  resolved_by UUID,
-  resolved_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CHECK(reporter_identity_id IS NOT NULL OR reporter_guest_token_hash IS NOT NULL)
-);
+ALTER TABLE community_reports ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE guest_interaction_blocks ADD COLUMN IF NOT EXISTS blocked_by UUID;
 
 CREATE INDEX IF NOT EXISTS idx_community_reports_status_created ON community_reports(status,created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_community_reports_target ON community_reports(target_type,target_id,created_at DESC);
