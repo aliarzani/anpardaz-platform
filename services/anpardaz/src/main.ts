@@ -1,9 +1,8 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { Pool } from 'pg';
-import { registerAuthRoutes, requireAuth } from './auth.js';
+import { registerAuthRoutes, requireAuth, ensureCustomer } from './auth.js';
 import { registerAccountRoutes } from './routes/accounts.js';
-
 const app = Fastify({ logger: true });
 const port = Number(process.env.PORT ?? 4001);
 const databaseUrl = process.env.DATABASE_URL;
@@ -11,8 +10,8 @@ const pool = databaseUrl ? new Pool({ connectionString: databaseUrl, max: 10, co
 if (!pool) app.log.warn('DATABASE_URL is not configured; database endpoints will be unavailable');
 await app.register(cors, { origin: process.env.CORS_ORIGIN?.split(',').map((value) => value.trim()) ?? ['http://localhost:5173'] });
 app.addHook('onSend', async (_request, reply) => { reply.header('X-Content-Type-Options','nosniff'); reply.header('Referrer-Policy','strict-origin-when-cross-origin'); reply.header('X-Frame-Options','DENY'); });
-app.get('/health', async () => ({ service: 'anpardaz', status: 'ok' }));
-app.get('/health/db', async (_request, reply) => { if (!pool) return reply.code(503).send({ service:'anpardaz',database:'not-configured' }); try { const r=await pool.query<{version:string}>('SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1'); return {service:'anpardaz',database:'ok',migration:r.rows[0]?.version??null}; } catch { return reply.code(503).send({service:'anpardaz',database:'unavailable'}); } });
-app.get('/api/v1/status', async () => ({ service:'anpardaz',apiVersion:'v1',status:'ready' }));
-if (pool) { registerAuthRoutes(app,pool); registerAccountRoutes(app,pool); app.get('/api/v1/auth/me',{preHandler:requireAuth},async(request)=>{const auth=(request as typeof request&{auth:{sub:string}}).auth;const r=await pool.query<{id:string;email:string|null;role:string;status:string}>('SELECT id,email,role,status FROM customers WHERE id=$1',[auth.sub]);return r.rows[0]?{user:r.rows[0]}:{error:'user_not_found'};}); }
-const shutdown=async()=>{await app.close();await pool?.end()}; process.on('SIGTERM',shutdown);process.on('SIGINT',shutdown); await app.listen({host:'0.0.0.0',port});
+app.get('/health', async () => ({ service:'anpardaz',status:'ok' }));
+app.get('/health/db', async (_request,reply) => { if(!pool)return reply.code(503).send({service:'anpardaz',database:'not-configured'}); try{const r=await pool.query<{version:string}>('SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1');return {service:'anpardaz',database:'ok',migration:r.rows[0]?.version??null};}catch{return reply.code(503).send({service:'anpardaz',database:'unavailable'});} });
+app.get('/api/v1/status',async()=>({service:'anpardaz',apiVersion:'v1',status:'ready'}));
+if(pool){registerAuthRoutes(app,pool);registerAccountRoutes(app,pool);app.get('/api/v1/auth/me',{preHandler:requireAuth},async(request)=>{const auth=(request as typeof request&{auth:any}).auth;const id=await ensureCustomer(pool,auth);const r=await pool.query<{id:string;identity_id:string;external_user_id:string;email:string|null;status:string}>('SELECT id,identity_id,external_user_id,email,status FROM customers WHERE id=$1',[id]);return r.rows[0]?{user:r.rows[0]}:{error:'user_not_found'};});}
+const shutdown=async()=>{await app.close();await pool?.end()};process.on('SIGTERM',shutdown);process.on('SIGINT',shutdown);await app.listen({host:'0.0.0.0',port});
