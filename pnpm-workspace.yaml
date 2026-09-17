@@ -3,5 +3,5 @@ packages:
   - "packages/*"
   - "services/*"
 
-onlyBuiltDependencies:
-  - esbuild
+allowBuilds:
+  esbuild: true
