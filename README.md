@@ -4,168 +4,130 @@
 
 > **An Pardaz — یک پلتفرم یکپارچه برای خدمات مالی، بازار، محتوا و ابزارهای هوشمند**
 
-An Pardaz Platform is the central monorepo for the An Pardaz ecosystem. The architecture is modular: Mobile, Web and backend services evolve together in one repository while sensitive financial and exchange workloads remain isolated.
+Central monorepo for the An Pardaz ecosystem. Mobile/Web and backend services evolve together while banking, exchange and accounting workloads remain isolated.
 
----
-
-## 🚀 Vision
-
-**«آن پرداز همه چیز در یک اپلیکیشن»**
-
-The ecosystem brings financial services, digital-asset services, marketplace capabilities, classified listings, intelligent assistance and financial management into one connected experience.
-
-Core principles:
-
-- **Modular** — independently maintainable applications and services.
-- **Scalable** — service groups can scale independently.
-- **Secure** — sensitive financial and exchange data are isolated by design.
-- **User-centered** — consistent Persian-first experiences across Mobile and Web.
-
-## 🧩 Ecosystem
+## Ecosystem
 
 | Product | Purpose |
 |---|---|
-| **An Pardaz** | Financial, banking and transaction services |
-| **An Sarraf** | Digital-asset exchange services |
+| **An Pardaz** | Banking, cards, transfers and financial services |
+| **An Sarraf** | Digital-asset exchange |
 | **An Banner** | Classified advertisements and local listings |
-| **An Market** | Product marketplace and price comparison |
-| **An Hoosh** | Intelligent assistant and AI capabilities |
+| **An Market** | Products and price comparison |
+| **An Hoosh** | AI assistant and content capabilities |
 | **Financial Center** | Income, expenses and personal financial management |
-| **An Yab** | Planned future ecosystem service |
+| **An Yab** | Planned ecosystem service |
 
-## 🏗️ Repository
+## Repository
 
 ```text
 anpardaz-platform/
-├── apps/
-│   ├── mobile/          # Approved An Pardaz mobile frontend
-│   └── web/             # Approved An Pardaz web frontend
-├── packages/            # Shared modules
+├── apps/                 # Approved Mobile + Web frontends
+├── packages/             # Shared clients/modules
 ├── services/
-│   ├── anpardaz/        # Banking / financial API service
-│   ├── ansarraf/        # Exchange API service
-│   └── platform/        # Banner / Market / content API service
+│   ├── anpardaz/         # Banking API
+│   ├── ansarraf/         # Exchange API
+│   ├── platform/         # Identity, content, community and control plane
+│   └── accounting/       # Double-entry accounting API
 ├── databases/
-│   ├── anpardaz/        # An Pardaz PostgreSQL migrations
-│   ├── ansarraf/        # An Sarraf PostgreSQL migrations
-│   └── platform/        # Platform PostgreSQL migrations
-├── infrastructure/      # Deployment configuration
-├── docs/                # Architecture and engineering documentation
-└── .github/workflows/   # Continuous integration
+│   ├── anpardaz/         # Banking DB migrations
+│   ├── ansarraf/         # Exchange DB migrations
+│   ├── platform/         # Platform DB migrations
+│   └── accounting/       # Accounting DB migrations
+├── infrastructure/       # Deployment templates
+├── docs/                 # Architecture/deployment documentation
+└── .github/workflows/    # CI
 ```
 
-## ✅ Current implementation status
+## Current backend foundation
 
-### Frontend
+- [x] Four independently deployable Fastify services on ports 4001–4004
+- [x] Four isolated PostgreSQL 17 databases
+- [x] Central Platform identity with Ed25519-signed short-lived tokens
+- [x] Password hashing and authenticated service APIs
+- [x] Granular role/permission model
+- [x] Admin/control-plane settings, maintenance, support and notifications
+- [x] Community comments and likes for members and guests
+- [x] Guest rate limiting, guest blocking and abuse reports
+- [x] Admin moderation with audit trail
+- [x] Content ingestion/AI workflow data model
+- [x] Market-data source/observation model and exchange adapters
+- [x] Accounting double-entry ledger with idempotency and decimal-safe validation
+- [x] Posted-ledger immutability, holds, statements and reversal transactions
+- [x] Shared accounting client package
+- [x] Local four-database bootstrap and migrations
+- [x] GitHub Actions builds for services, shared accounting package, Mobile and Web
 
-- [x] Central monorepo created
-- [x] Approved Mobile frontend imported
-- [x] Approved Web frontend imported
-- [x] Frontend builds verified in Codespaces
-- [x] Existing frontend UI preserved as the implementation baseline
+## Database boundaries
 
-### Backend foundation
+**An Pardaz DB** is the source of banking-domain data.
 
-- [x] Three independently deployable Fastify services
-- [x] CORS configuration
-- [x] Liveness and database readiness endpoints
-- [x] API version/status endpoints
-- [x] PostgreSQL connection pools with bounded connections/timeouts
-- [x] Platform published-news API with pagination
-- [x] Node.js 24 native TypeScript development workflow; no `tsx`/esbuild dependency in backend services
-- [x] Local environment templates
+**An Sarraf DB** is the source of exchange-domain data.
 
-### Data layer
+**Platform DB** contains identity, Banner, Market, forum, news/content, support, community and operational control-plane data.
 
-- [x] Three separate PostgreSQL 17 instances for local development
-- [x] Separate database users, databases and persistent volumes
-- [x] Foundation and core migrations for all three databases
-- [x] Migration runner
-- [x] Financial, exchange and platform data separated by database boundary
+**Accounting DB** contains the financial double-entry ledger. Posted ledger history is immutable; corrections are represented by new reversal/adjustment transactions.
 
-### CI
+There are no cross-database foreign keys. Frontends never connect directly to PostgreSQL. Cross-service operations use authenticated APIs. Market-data ingestion is informational and does not mutate balances.
 
-- [x] GitHub Actions build checks for Mobile, Web and all backend services
+## Security model
 
-## 🗄️ Database boundaries
+- Banking, exchange and accounting runtime/database/network boundaries are separated.
+- Internal accounting endpoints require a dedicated credential.
+- Production secrets are never committed.
+- Platform identity signing uses an Ed25519 private key held only by Platform; domain services receive only the verification key.
+- Administrative destructive/moderation actions require permissions and are audited.
+- Guest interaction identifiers are stored as hashes rather than raw guest tokens.
+- Financial amounts are handled as decimal strings and PostgreSQL `NUMERIC`, not JavaScript floating-point numbers.
 
-**An Pardaz DB** contains banking-domain data such as customers, accounts, cards and financial transactions.
-
-**An Sarraf DB** contains exchange-domain data such as customers, assets, wallets, orders, trades, deposits and withdrawals.
-
-**Platform DB** contains non-sensitive platform data such as Banner, Market, forum and news/content.
-
-No frontend connects directly to PostgreSQL. Cross-service communication will use authenticated APIs. Sensitive banking and exchange data must not be copied into the Platform database.
-
-## 🔐 Deployment model
-
-The target production topology is:
+## Production topology
 
 ```text
 VPS 1 → An Pardaz / Banking → An Pardaz DB
 VPS 2 → An Sarraf / Exchange → An Sarraf DB
-VPS 3 → Platform Services   → Platform DB
+VPS 3 → Platform / Control Plane → Platform DB
+VPS 4 → Accounting → Accounting DB
 ```
 
-The repository remains a monorepo, but each service group is designed for independent runtime, secrets, network, firewall and deployment boundaries.
+See `docs/production-deployment.md` for isolation and deployment rules.
 
-## 🛠️ Development
+## Local development
 
-Frontend builds:
+The complete local environment can be initialized with:
 
 ```bash
-cd apps/mobile && pnpm install && pnpm run build
-cd apps/web && pnpm install && pnpm run build
+bash scripts/bootstrap-local.sh
 ```
 
-Backend builds:
+The bootstrap starts all four PostgreSQL containers, applies all migrations, generates local identity/guest/accounting secrets, installs dependencies and builds every service plus both approved frontends.
+
+Backend builds can also be run individually with:
 
 ```bash
-pnpm --dir services/anpardaz install && pnpm --dir services/anpardaz build
-pnpm --dir services/ansarraf install && pnpm --dir services/ansarraf build
-pnpm --dir services/platform install && pnpm --dir services/platform build
+pnpm --dir services/anpardaz build
+pnpm --dir services/ansarraf build
+pnpm --dir services/platform build
+pnpm --dir services/accounting build
+pnpm --dir packages/accounting-client build
 ```
 
-Local PostgreSQL is defined in `databases/docker-compose.yml`. Copy `databases/.env.example` to `databases/.env`, start the three containers, then run `bash databases/migrate.sh`.
-
-Backend environment examples are provided in each service directory. Real secrets must never be committed.
-
-## 📡 Backend endpoints
-
-Each backend service provides:
-
-- `GET /health`
-- `GET /health/db`
-- `GET /api/v1/status`
-
-Platform additionally provides:
-
-- `GET /api/v1/news?page=1&limit=20`
-
-The API surface will expand only after authentication, authorization, validation and service-boundary rules are established.
-
-## 🔒 Engineering rules
+## Engineering rules
 
 1. Preserve the approved frontend UI unless an explicit UI change is requested.
-2. Do not modify the legacy `Anpardaz_working_-` application; it is reference-only.
+2. Keep the legacy `Anpardaz_working_-` application reference-only.
 3. Never expose PostgreSQL directly to a frontend.
-4. Keep An Pardaz Banking and An Sarraf Exchange isolated at database, secrets, network and deployment levels.
+4. Keep banking, exchange and accounting data isolated.
 5. Never commit real credentials or tokens.
-6. Use explicit API boundaries for cross-service communication.
-7. Avoid unrelated changes when fixing a specific issue.
+6. Use authenticated API boundaries for cross-service communication.
+7. Do not use floating-point arithmetic for financial amounts.
 8. Keep meaningful changes committed and pushed to `main`.
+9. Complete backend/database/control-plane foundations before frontend integration.
 
-## 📚 Documentation
+## Phase
 
-- `docs/backend-foundation.md` — backend boundaries, health/readiness and local environment
-- `databases/` — PostgreSQL migrations and local database orchestration
-- `.github/workflows/ci.yml` — automated build checks
+**Current phase: Backend + Database + Control Plane completion.**
 
-## 📜 Status
-
-**Current phase: Backend + Database Foundation**
-
-The project has moved beyond the frontend-only foundation. The next implementation layer is the secure API platform: authentication/authorization, request validation, domain repositories and controlled business APIs, followed by production infrastructure and deployment automation.
+The repository now contains the core service, database, identity, moderation, market-data and accounting foundations needed before the final frontend integration phase.
 
 ---
 
