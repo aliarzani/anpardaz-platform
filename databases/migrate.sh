@@ -15,30 +15,17 @@ source "${ENV_FILE}"
 set +a
 
 run_migrations() {
-  local service="$1"
-  local database="$2"
-  local user="$3"
-  local password="$4"
-  local dir="$5"
-  local migration_file
-
+  local service="$1" database="$2" user="$3" password="$4" dir="$5" migration_file
   echo "Migrating ${service}..."
   shopt -s nullglob
   local migrations=("${ROOT_DIR}/${dir}"/*.sql)
   shopt -u nullglob
-
-  if (( ${#migrations[@]} == 0 )); then
-    echo "No SQL migrations found for ${service}."
-    return 0
-  fi
-
+  if (( ${#migrations[@]} == 0 )); then echo "No SQL migrations found for ${service}."; return 0; fi
   IFS=$'\n' migrations=( $(printf '%s\n' "${migrations[@]}" | sort) )
-
   for migration_file in "${migrations[@]}"; do
     echo "  -> $(basename "${migration_file}")"
     docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" exec -T "${service}" \
-      env PGPASSWORD="${password}" psql -v ON_ERROR_STOP=1 -U "${user}" -d "${database}" \
-      < "${migration_file}"
+      env PGPASSWORD="${password}" psql -v ON_ERROR_STOP=1 -U "${user}" -d "${database}" < "${migration_file}"
   done
 }
 
