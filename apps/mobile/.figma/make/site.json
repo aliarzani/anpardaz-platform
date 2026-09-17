@@ -1,0 +1,10 @@
+{
+  "description": "Manage Iranian currency transfers, pay bills, access vehicle services, and handle insurance with a user-friendly interface supporting multiple payment methods.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

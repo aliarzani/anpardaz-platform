@@ -1,0 +1,2249 @@
+]633;E;echo "=========================================";f3b7a9f3-7bed-4103-adcb-f816a1cd8f85]633;C=========================================
+PROJECT: transfer - PART 2 OF 2
+Source Code Files
+GENERATED: Sun Aug  9 23:32:16 UTC 2026
+=========================================
+
+FILE: src/App.tsx
+-----------------------------------------
+import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
+
+// ─── Config ───────────────────────────────────────────────────────────────────
+const FALLBACK_RATE = 87500;
+const KAVENEGAR_KEY = "";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+type AppState = "splash" | "login" | "otp" | "onboard-photo" | "onboard-profile" | "onboard-pin" | "ready";
+type MainTab = "home" | "history" | "profile";
+type SubPage = null | "transfer" | "tether-swap" | "exchange" | "charge" | "internet" | "bills" | "service" | "car-services" | "violations" | "freeway" | "tehran-traffic" | "insurance" | "sana" | "judiciary-bill" | "property-reg" | "charity";
+
+interface UserData {
+  phone: string; name: string; family: string; nationalId: string;
+  birthDate: string; photo: string; pin: string;
+  tomanBalance: number; usdtBalance: number;
+  cards: BankCard[]; registeredAt: string;
+}
+interface BankCard { id: string; number: string; bank: string; holderName: string; }
+interface TxRecord {
+  id: string; userId: string;
+  type: "deposit" | "withdraw" | "swap" | "transfer";
+  fromAsset: "toman" | "usdt"; toAsset: "toman" | "usdt";
+  amount: number; convertedAmount?: number; fee: number;
+  status: "pending" | "done" | "failed"; createdAt: string;
+  toAddress?: string; note?: string;
+}
+interface ExOrder {
+  id: string; pair: string; side: "buy" | "sell";
+  price: number; amount: number; total: number;
+  status: "open" | "filled" | "cancelled"; createdAt: string;
+}
+type ExAsset = "toman" | "USDT" | "BTC" | "ETH" | "BNB" | "SOL" | "DOGE" | "ADA";
+type ExWallet = Record<ExAsset, number>;
+
+// ─── Exchange Constants ────────────────────────────────────────────────────────
+const EX_PAIRS = [
+  "BTC/USDT","ETH/USDT","BNB/USDT","XRP/USDT","ADA/USDT","SOL/USDT",
+  "AVAX/USDT","DOT/USDT","MATIC/USDT","LINK/USDT","UNI/USDT","ATOM/USDT",
+  "LTC/USDT","ETC/USDT","DOGE/USDT","TRX/USDT","NEAR/USDT","ALGO/USDT",
+  "VET/USDT","FTM/USDT","SHIB/USDT","APE/USDT","OP/USDT","ARB/USDT",
+  "INJ/USDT","SUI/USDT","SEI/USDT","PEPE/USDT","WIF/USDT","JUP/USDT",
+  "BTC/TOMAN","ETH/TOMAN","USDT/TOMAN","BNB/TOMAN","SOL/TOMAN","DOGE/TOMAN",
+];
+const INITIAL_PRICES: Record<string, number> = {
+  "BTC/USDT":67543,"ETH/USDT":3852,"BNB/USDT":608,
+  "XRP/USDT":0.621,"ADA/USDT":0.483,"SOL/USDT":187,
+  "AVAX/USDT":42.3,"DOT/USDT":8.52,"MATIC/USDT":0.953,
+  "LINK/USDT":18.7,"UNI/USDT":12.5,"ATOM/USDT":11.3,
+  "LTC/USDT":93.2,"ETC/USDT":36.5,"DOGE/USDT":0.1865,
+  "TRX/USDT":0.1285,"NEAR/USDT":8.25,"ALGO/USDT":0.221,
+  "VET/USDT":0.0473,"FTM/USDT":0.782,"SHIB/USDT":0.0000267,
+  "APE/USDT":1.87,"OP/USDT":2.97,"ARB/USDT":1.27,
+  "INJ/USDT":38.5,"SUI/USDT":1.97,"SEI/USDT":0.683,
+  "PEPE/USDT":0.0000187,"WIF/USDT":3.48,"JUP/USDT":1.14,
+  "BTC/TOMAN":67543*87500,"ETH/TOMAN":3852*87500,
+  "USDT/TOMAN":87500,"BNB/TOMAN":608*87500,
+  "SOL/TOMAN":187*87500,"DOGE/TOMAN":0.1865*87500,
+};
+const TV_SYMBOLS: Record<string,string> = {
+  "BTC/USDT":"BINANCE:BTCUSDT","ETH/USDT":"BINANCE:ETHUSDT",
+  "BNB/USDT":"BINANCE:BNBUSDT","XRP/USDT":"BINANCE:XRPUSDT",
+  "ADA/USDT":"BINANCE:ADAUSDT","SOL/USDT":"BINANCE:SOLUSDT",
+  "AVAX/USDT":"BINANCE:AVAXUSDT","DOT/USDT":"BINANCE:DOTUSDT",
+  "MATIC/USDT":"BINANCE:MATICUSDT","LINK/USDT":"BINANCE:LINKUSDT",
+  "UNI/USDT":"BINANCE:UNIUSDT","ATOM/USDT":"BINANCE:ATOMUSDT",
+  "LTC/USDT":"BINANCE:LTCUSDT","ETC/USDT":"BINANCE:ETCUSDT",
+  "DOGE/USDT":"BINANCE:DOGEUSDT","TRX/USDT":"BINANCE:TRXUSDT",
+  "NEAR/USDT":"BINANCE:NEARUSDT","ALGO/USDT":"BINANCE:ALGOUSDT",
+  "VET/USDT":"BINANCE:VETUSDT","FTM/USDT":"BINANCE:FTMUSDT",
+  "SHIB/USDT":"BINANCE:SHIBUSDT","APE/USDT":"BINANCE:APEUSDT",
+  "OP/USDT":"BINANCE:OPUSDT","ARB/USDT":"BINANCE:ARBUSDT",
+  "INJ/USDT":"BINANCE:INJUSDT","SUI/USDT":"BINANCE:SUIUSDT",
+  "SEI/USDT":"BINANCE:SEIUSDT","PEPE/USDT":"BINANCE:PEPEUSDT",
+  "WIF/USDT":"BINANCE:WIFUSDT","JUP/USDT":"BINANCE:JUPUSDT",
+  "USDT/TOMAN":"NOBITEX:USDTIRT","BTC/TOMAN":"NOBITEX:BTCIRT",
+  "ETH/TOMAN":"NOBITEX:ETHIRT","BNB/TOMAN":"NOBITEX:BNBIRT",
+  "SOL/TOMAN":"NOBITEX:SOLIRT","DOGE/TOMAN":"NOBITEX:DOGEIRT",
+};
+
+// ─── Storage ──────────────────────────────────────────────────────────────────
+const DB = {
+  getUser:(p:string):UserData|null=>{try{return JSON.parse(localStorage.getItem(`anp_user_${p}`)??"null")}catch{return null}},
+  saveUser:(u:UserData)=>localStorage.setItem(`anp_user_${u.phone}`,JSON.stringify(u)),
+  currentPhone:()=>localStorage.getItem("anp_current")??"",
+  setCurrentPhone:(p:string)=>localStorage.setItem("anp_current",p),
+  getTx:(p:string):TxRecord[]=>{try{return JSON.parse(localStorage.getItem(`anp_tx_${p}`)??"[]")}catch{return[]}},
+  saveTx:(p:string,t:TxRecord[])=>localStorage.setItem(`anp_tx_${p}`,JSON.stringify(t)),
+  userExists:(p:string)=>!!localStorage.getItem(`anp_user_${p}`),
+  getExWallet:():ExWallet=>{try{return JSON.parse(localStorage.getItem("anp_ex_wallet")??"null")||{toman:0,USDT:0,BTC:0,ETH:0,BNB:0,SOL:0,DOGE:0,ADA:0}}catch{return{toman:0,USDT:0,BTC:0,ETH:0,BNB:0,SOL:0,DOGE:0,ADA:0}}},
+  saveExWallet:(w:ExWallet)=>localStorage.setItem("anp_ex_wallet",JSON.stringify(w)),
+  getExOrders:():ExOrder[]=>{try{return JSON.parse(localStorage.getItem("anp_ex_orders")??"[]")}catch{return[]}},
+  saveExOrders:(o:ExOrder[])=>localStorage.setItem("anp_ex_orders",JSON.stringify(o)),
+};
+
+// ─── API ──────────────────────────────────────────────────────────────────────
+async function fetchUSDTRate():Promise<number>{
+  try{const r=await fetch("https://api.wallex.ir/v1/markets",{signal:AbortSignal.timeout(7000)});const d=await r.json();const p=d?.result?.symbols?.USDTTMN?.stats?.lastPrice??d?.result?.symbols?.USDTTMN?.stats?.bidPrice;if(p)return parseFloat(p);return FALLBACK_RATE;}catch{return FALLBACK_RATE}
+}
+async function sendOTP(phone:string,code:string):Promise<{ok:boolean;devCode?:string}>{
+  if(!KAVENEGAR_KEY)return{ok:false,devCode:code};
+  try{const url=`https://api.kavenegar.com/v1/${KAVENEGAR_KEY}/sms/send.json`;const body=new URLSearchParams({receptor:phone,message:`کد تأیید آن‌پرداز: ${code}`,sender:"10004346"});const r=await fetch(url,{method:"POST",body});const d=await r.json();return{ok:d.return?.status===200}}catch{return{ok:false,devCode:code}}
+}
+
+// ─── Utilities ────────────────────────────────────────────────────────────────
+const fa=(v:number|string)=>new Intl.NumberFormat("fa-IR").format(Number(v));
+const faFixed=(v:number,d=4)=>new Intl.NumberFormat("fa-IR",{minimumFractionDigits:d,maximumFractionDigits:d}).format(v);
+function genOTP(){return String(Math.floor(100000+Math.random()*900000))}
+function genId(){return"TX"+Date.now().toString(36).toUpperCase()}
+function isBSCAddress(s:string){return/^0x[0-9a-fA-F]{40}$/.test(s.trim())}
+function isTRC20Address(s:string){return/^T[A-Za-z1-9]{33}$/.test(s.trim())}
+function isIranPhone(s:string){return/^09[0-9]{9}$/.test(s.trim())}
+function playChime(){try{const c=new AudioContext();[523,659,784,1047].forEach((f,i)=>{const o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);o.frequency.value=f;o.type="sine";g.gain.setValueAtTime(0,c.currentTime+i*0.11);g.gain.linearRampToValueAtTime(0.15,c.currentTime+i*0.11+0.03);g.gain.exponentialRampToValueAtTime(0.001,c.currentTime+i*0.11+0.42);o.start(c.currentTime+i*0.11);o.stop(c.currentTime+i*0.11+0.5)})}catch{}}
+function fmtPrice(p:number):string{if(p>=1000)return p.toLocaleString("en",{maximumFractionDigits:2});if(p>=1)return p.toFixed(4);if(p>=0.001)return p.toFixed(6);return p.toFixed(8)}
+
+// ─── Icon ─────────────────────────────────────────────────────────────────────
+function Icon({name,size=22,stroke=1.8}:{name:string;size?:number;stroke?:number}){
+  const P:Record<string,ReactNode>={
+    bell:<><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></>,
+    eye:<><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/></>,
+    "eye-off":<><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></>,
+    plus:<path d="M12 5v14M5 12h14"/>,
+    send:<><path d="m21 3-7 18-4-8-7-4 18-6Z"/><path d="m10 13 4-4"/></>,
+    swap:<><path d="M7 7h12l-3-3M17 17H5l3 3"/></>,
+    receipt:<><path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Z"/><path d="M9 8h6M9 12h6"/></>,
+    home:<><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V10Z"/><path d="M9 21v-6h6v6"/></>,
+    chart:<><path d="M4 19V5M4 19h17"/><path d="m7 15 4-4 3 2 5-6"/></>,
+    user:<><circle cx="12" cy="8" r="4"/><path d="M4 21c.8-4 3.4-6 8-6s7.2 2 8 6"/></>,
+    arrow:<path d="m14 6-6 6 6 6"/>,
+    "arrow-left":<path d="m10 18 6-6-6-6"/>,
+    check:<path d="m5 12 4 4L19 6"/>,
+    clock:<><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></>,
+    camera:<><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></>,
+    shield:<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>,
+    info:<><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></>,
+    lock:<><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></>,
+    x:<><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></>,
+    credit:<><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></>,
+    phone:<><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.55 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></>,
+    question:<><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/></>,
+    wallet:<><path d="M4 7a2 2 0 0 1 2-2h12v14H6a2 2 0 0 1-2-2V7Z"/><path d="M18 9h3v7h-3a2 2 0 0 1 0-4h3"/></>,
+    chevron:<path d="m9 18 6-6-6-6"/>,
+    delete:<path d="M20 5H9l-7 7 7 7h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z"/>,
+    menu:<><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></>,
+    wifi:<><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1"/></>,
+    car:<><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/><path d="m6 7 2-4h8l2 4"/></>,
+    "shield-check":<><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></>,
+    "file-text":<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10,9 9,9 8,9"/></>,
+    gavel:<><path d="M14 13 8.5 7.5"/><path d="m4.5 20.5 3-3"/><path d="M10.5 7.5 6.5 3.5a1.41 1.41 0 0 0-2 2L8.5 9.5"/><path d="M14 13l4 4a1.41 1.41 0 0 1-2 2l-4-4"/></>,
+    building:<><rect x="2" y="2" width="20" height="20"/><path d="M9 22v-4h6v4M2 9h20M2 15h20M9 2v20M15 2v20"/></>,
+    "trending-up":<><polyline points="23,6 13.5,15.5 8.5,10.5 1,18"/><polyline points="17,6 23,6 23,12"/></>,
+    settings:<><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></>,
+    "log-out":<><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16,17 21,12 16,7"/><line x1="21" y1="12" x2="9" y2="12"/></>,
+    search:<><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></>,
+    contacts:<><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></>,
+    deposit:<><path d="M12 22V12"/><path d="m7 17 5 5 5-5"/><path d="M20 6H4a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2z"/></>,
+  };
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{P[name]??<circle cx="12" cy="12" r="10"/>}</svg>;
+}
+
+// ─── Splash ───────────────────────────────────────────────────────────────────
+function SplashScreen(){
+  return <div className="splash-screen">
+    <div className="splash-glow"/>
+    <div className="splash-content">
+      <div className="splash-logo-wrap">
+        <div className="splash-logo-main"><span>آ</span></div>
+        <div className="splash-logo-ring r1"/><div className="splash-logo-ring r2"/>
+      </div>
+      <div className="splash-name">
+        <div className="splash-title">آن‌پرداز</div>
+        <div className="splash-sub">مدیریت دارایی دیجیتال</div>
+      </div>
+    </div>
+    <div className="splash-dots"><span/><span/><span/></div>
+  </div>;
+}
+
+// ─── Phone Login ──────────────────────────────────────────────────────────────
+function PhoneLogin({onSend}:{onSend:(p:string,c:string,d?:string)=>void}){
+  const [phone,setPhone]=useState("");const [loading,setLoading]=useState(false);const [err,setErr]=useState("");
+  const submit=async()=>{const p=phone.trim();if(!isIranPhone(p)){setErr("شماره موبایل معتبر نیست.");return;}setErr("");setLoading(true);const code=genOTP();const res=await sendOTP(p,code);setLoading(false);onSend(p,code,res.devCode)};
+  return <div className="auth-screen" dir="rtl">
+    <div className="auth-logo-area">
+      <div className="splash-logo-main" style={{width:72,height:72,borderRadius:20}}><span style={{fontSize:32}}>آ</span></div>
+      <div style={{marginTop:12,textAlign:"center"}}><div style={{fontSize:20,fontWeight:900,color:"#f0f0f0"}}>آن‌پرداز</div><div style={{fontSize:12,color:"#00c896",marginTop:4}}>مدیریت دارایی دیجیتال</div></div>
+    </div>
+    <div className="auth-card">
+      <h2 style={{fontSize:18,fontWeight:800,color:"#f0f0f0",marginBottom:8}}>ورود به حساب</h2>
+      <p style={{fontSize:13,color:"#888",marginBottom:20}}>شماره موبایل خود را وارد کنید. کد تأیید برایتان پیامک می‌شود.</p>
+      <label style={{fontSize:13,color:"#aaa",display:"block",marginBottom:6}}>شماره موبایل</label>
+      <div className={`auth-input-wrap ${err?"error":""}`}>
+        <input className="auth-input ltr" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="09xxxxxxxxx" inputMode="tel" maxLength={11} dir="ltr" onKeyDown={e=>e.key==="Enter"&&submit()}/>
+      </div>
+      {err&&<p className="field-err">{err}</p>}
+      <button className="primary-button" style={{marginTop:20}} onClick={submit} disabled={loading}>{loading?"در حال ارسال...":"دریافت کد تأیید"}</button>
+    </div>
+  </div>;
+}
+
+// ─── OTP Verify ───────────────────────────────────────────────────────────────
+function OTPVerify({phone,correctCode,devCode,onVerified}:{phone:string;correctCode:string;devCode?:string;onVerified:(p:string)=>void}){
+  const [otp,setOtp]=useState("");const [err,setErr]=useState("");const [resendLeft,setResendLeft]=useState(120);
+  useEffect(()=>{if(resendLeft<=0)return;const t=setTimeout(()=>setResendLeft(r=>r-1),1000);return()=>clearTimeout(t)},[resendLeft]);
+  const verify=()=>{if(otp.trim()===correctCode)onVerified(phone);else setErr("کد وارد شده اشتباه است.")};
+  const pad=(n:number)=>String(Math.floor(n/60)).padStart(2,"0")+":"+String(n%60).padStart(2,"0");
+  return <div className="auth-screen" dir="rtl">
+    <div className="auth-logo-area">
+      <div className="splash-logo-main" style={{width:72,height:72,borderRadius:20}}><span style={{fontSize:32}}>آ</span></div>
+    </div>
+    <div className="auth-card">
+      <h2 style={{fontSize:18,fontWeight:800,color:"#f0f0f0",marginBottom:8}}>کد تأیید</h2>
+      <p style={{fontSize:13,color:"#888",marginBottom:20}}>کد ۶ رقمی ارسال‌شده به <b dir="ltr">{phone}</b> را وارد کنید.</p>
+      {devCode&&<div style={{background:"rgba(232,81,42,0.1)",border:"1px solid rgba(232,81,42,0.3)",borderRadius:10,padding:"10px 14px",fontSize:12,color:"#e8512a",marginBottom:16}}>⚠️ حالت آزمایشی — کد: <b dir="ltr">{devCode}</b></div>}
+      <label style={{fontSize:13,color:"#aaa",display:"block",marginBottom:6}}>کد تأیید</label>
+      <div className={`auth-input-wrap ${err?"error":""}`}>
+        <input className="auth-input ltr" value={otp} onChange={e=>setOtp(e.target.value.replace(/\D/g,"").slice(0,6))} placeholder="------" inputMode="numeric" dir="ltr" onKeyDown={e=>e.key==="Enter"&&verify()} style={{letterSpacing:8,fontSize:22,fontWeight:700}}/>
+      </div>
+      {err&&<p className="field-err">{err}</p>}
+      <button className="primary-button" style={{marginTop:20}} onClick={verify}>تأیید و ورود</button>
+      <p style={{textAlign:"center",marginTop:16,fontSize:13,color:"#666"}}>
+        {resendLeft>0?<span>ارسال مجدد تا <b dir="ltr" style={{color:"#888"}}>{pad(resendLeft)}</b></span>:<button style={{background:"none",border:"none",color:"#00c896",cursor:"pointer",fontFamily:"inherit",fontSize:13}} onClick={()=>setResendLeft(120)}>ارسال مجدد کد</button>}
+      </p>
+    </div>
+  </div>;
+}
+
+// ─── Onboard Photo ────────────────────────────────────────────────────────────
+function OnboardPhoto({onDone}:{onDone:(p:string)=>void}){
+  const [photo,setPhoto]=useState("");const [cameraOn,setCameraOn]=useState(false);const [err,setErr]=useState("");
+  const videoRef=useRef<HTMLVideoElement>(null);const canvasRef=useRef<HTMLCanvasElement>(null);const fileRef=useRef<HTMLInputElement>(null);
+  const startCamera=async()=>{try{const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user"}});if(videoRef.current){videoRef.current.srcObject=s;videoRef.current.play()}setCameraOn(true)}catch{setErr("دسترسی به دوربین رد شد.")}};
+  const snap=()=>{if(!videoRef.current||!canvasRef.current)return;const v=videoRef.current,c=canvasRef.current;c.width=v.videoWidth;c.height=v.videoHeight;c.getContext("2d")?.drawImage(v,0,0);const url=c.toDataURL("image/jpeg",0.8);setPhoto(url);(v.srcObject as MediaStream)?.getTracks().forEach(t=>t.stop());setCameraOn(false)};
+  return <div className="auth-screen" dir="rtl">
+    <div className="auth-card">
+      <div style={{fontSize:11,color:"#00c896",fontWeight:700,marginBottom:8}}>مرحله ۱ از ۳</div>
+      <h2 style={{fontSize:18,fontWeight:800,color:"#f0f0f0",marginBottom:8}}>عکس پروفایل</h2>
+      <p style={{fontSize:13,color:"#888",marginBottom:20}}>از چهره خود عکس بگیرید یا تصویر آپلود کنید.</p>
+      <div style={{width:100,height:100,borderRadius:"50%",background:"#1a1a1a",border:"2px solid #2e2e2e",margin:"0 auto 20px",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
+        {photo?<img src={photo} alt="پروفایل" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:cameraOn?<video ref={videoRef} autoPlay playsInline muted style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<Icon name="camera" size={36}/>}
+      </div>
+      <canvas ref={canvasRef} style={{display:"none"}}/>
+      {!photo&&!cameraOn&&<div style={{display:"flex",gap:8,marginBottom:16}}>
+        <button className="outline-button" style={{flex:1}} onClick={startCamera}><Icon name="camera" size={16}/> دوربین</button>
+        <button className="outline-button" style={{flex:1}} onClick={()=>fileRef.current?.click()}><Icon name="plus" size={16}/> آپلود</button>
+        <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=ev=>setPhoto(ev.target?.result as string);r.readAsDataURL(f)}}/>
+      </div>}
+      {cameraOn&&<button className="primary-button" onClick={snap}>📸 ثبت عکس</button>}
+      {err&&<p className="field-err">{err}</p>}
+      {photo&&<button className="primary-button" onClick={()=>onDone(photo)}>ادامه <Icon name="arrow" size={18}/></button>}
+    </div>
+  </div>;
+}
+
+// ─── Onboard Profile ──────────────────────────────────────────────────────────
+function OnboardProfile({onDone}:{onDone:(d:{name:string;family:string;nationalId:string;birthDate:string})=>void}){
+  const [d,setD]=useState({name:"",family:"",nationalId:"",birthDate:""});const [err,setErr]=useState("");
+  const confirm=()=>{if(!d.name||!d.family||!d.nationalId||!d.birthDate){setErr("تمام فیلدها الزامی است.");return}if(d.nationalId.length!==10){setErr("کد ملی باید ۱۰ رقم باشد.");return}setErr("");onDone(d)};
+  return <div className="auth-screen" dir="rtl">
+    <div className="auth-card">
+      <div style={{fontSize:11,color:"#00c896",fontWeight:700,marginBottom:8}}>مرحله ۲ از ۳</div>
+      <h2 style={{fontSize:18,fontWeight:800,color:"#f0f0f0",marginBottom:8}}>اطلاعات شخصی</h2>
+      <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:16}}>
+        {([["نام","name","text"],["نام خانوادگی","family","text"],["کد ملی","nationalId","numeric"],["تاریخ تولد","birthDate","text"]] as [string,keyof typeof d,string][]).map(([label,key,mode])=>
+          <label key={key} style={{fontSize:13,color:"#aaa"}}>
+            {label}
+            <div className="auth-input-wrap" style={{marginTop:4}}>
+              <input className={`auth-input ${key==="nationalId"||key==="birthDate"?"ltr":""}`} value={d[key]} onChange={e=>setD(p=>({...p,[key]:e.target.value}))} inputMode={mode as never} placeholder={key==="nationalId"?"۱۰ رقم":key==="birthDate"?"۱۴۰۰/۰۱/۰۱":""}/>
+            </div>
+          </label>
+        )}
+      </div>
+      {err&&<p className="field-err">{err}</p>}
+      <button className="primary-button" onClick={confirm}>ادامه <Icon name="arrow" size={18}/></button>
+    </div>
+  </div>;
+}
+
+// ─── Onboard PIN ──────────────────────────────────────────────────────────────
+function OnboardPin({onDone}:{onDone:(pin:string)=>void}){
+  const [step,setStep]=useState<"enter"|"confirm">("enter");const [first,setFirst]=useState("");const [cur,setCur]=useState("");const [err,setErr]=useState("");
+  const tap=(d:string)=>{const next=cur+d;if(next.length>4)return;setCur(next);if(next.length===4){setTimeout(()=>{if(step==="enter"){setFirst(next);setCur("");setStep("confirm");setErr("")}else{if(next===first)onDone(next);else{setErr("رمزها یکسان نیستند.");setFirst("");setCur("");setStep("enter")}}},150)}};
+  const del=()=>setCur(p=>p.slice(0,-1));
+  const KEYS=["1","2","3","4","5","6","7","8","9","","0","del"];
+  const FA_DIG:Record<string,string>={"1":"۱","2":"۲","3":"۳","4":"۴","5":"۵","6":"۶","7":"۷","8":"۸","9":"۹","0":"۰"};
+  return <div className="auth-screen" dir="rtl">
+    <div className="auth-card pin-card">
+      <div style={{fontSize:11,color:"#00c896",fontWeight:700,marginBottom:8}}>مرحله ۳ از ۳</div>
+      <div style={{display:"flex",justifyContent:"center",marginBottom:12,color:"#00c896"}}><Icon name="lock" size={32}/></div>
+      <h2 style={{fontSize:18,fontWeight:800,color:"#f0f0f0",textAlign:"center",marginBottom:8}}>{step==="enter"?"رمز ۴ رقمی بسازید":"تأیید رمز"}</h2>
+      <div style={{display:"flex",justifyContent:"center",gap:12,margin:"20px 0"}}>
+        {[0,1,2,3].map(i=><div key={i} style={{width:14,height:14,borderRadius:"50%",background:cur.length>i?"#00c896":"#2e2e2e",transition:"background 0.2s"}}/>)}
+      </div>
+      {err&&<p className="field-err" style={{textAlign:"center"}}>{err}</p>}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginTop:8}}>
+        {KEYS.map((k,i)=>k===""?<div key={i}/>:k==="del"?<button key={i} style={{height:56,borderRadius:14,background:"#1e1e1e",border:"1px solid #2e2e2e",cursor:"pointer",color:"#f0f0f0",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={del}><Icon name="delete" size={18}/></button>:<button key={i} style={{height:56,borderRadius:14,background:"#1e1e1e",border:"1px solid #2e2e2e",cursor:"pointer",color:"#f0f0f0",fontSize:22,fontWeight:700,fontFamily:"Vazirmatn"}} onClick={()=>tap(k)}>{FA_DIG[k]}</button>)}
+      </div>
+    </div>
+  </div>;
+}
+
+// ─── Transfer Screen ──────────────────────────────────────────────────────────
+type TransferSource="toman"|"usdt"|string;
+function TransferScreen({user,rate,onUpdate,onBack}:{user:UserData;rate:number;onUpdate:(u:UserData,tx:TxRecord)=>void;onBack:()=>void}){
+  const [source,setSource]=useState<TransferSource>("toman");
+  const [showSrcDrop,setShowSrcDrop]=useState(false);
+  const [dest,setDest]=useState("");
+  const [destSearch,setDestSearch]=useState("");
+  const [amount,setAmount]=useState("");
+  const [msg,setMsg]=useState<{text:string;type:"err"|"ok"|"warn"}|null>(null);
+  const [loading,setLoading]=useState(false);
+  const [cooldown,setCooldown]=useState(0);
+  const [toExchange,setToExchange]=useState(false);
+
+  useEffect(()=>{if(cooldown<=0)return;const t=setTimeout(()=>setCooldown(c=>c-1),1000);return()=>clearTimeout(t)},[cooldown]);
+
+  const isCard=source.startsWith("card_");
+  const cardId=isCard?source.replace("card_",""):"";
+  const card=user.cards.find(c=>c.id===cardId);
+  const asset:("toman"|"usdt")=isCard?"toman":source as "toman"|"usdt";
+  const numAmount=parseFloat(amount)||0;
+  const destType=toExchange?"exchange":isIranPhone(dest.trim())?"mobile":isBSCAddress(dest.trim())?"bsc":isTRC20Address(dest.trim())?"trc20":"unknown";
+
+  const selectSource=(s:TransferSource)=>{setSource(s);setShowSrcDrop(false);if(s.startsWith("card_"))setToExchange(false)};
+
+  const pickContact=async()=>{try{const c=await(navigator as any).contacts?.select(["name","tel"],{multiple:false});if(c&&c.length>0&&c[0].tel?.length>0)setDest(c[0].tel[0].replace(/\s/g,""))}catch{alert("دسترسی به مخاطبین پشتیبانی نمی‌شود. شماره را دستی وارد کنید.")}};
+
+  const srcLabel=isCard?`${card?.bank||"کارت"} - ${card?.number.slice(-4)||"****"}`:source==="toman"?"کیف پول تومانی":"کیف پول تتر (USDT)";
+  const srcBalance=isCard?"---":source==="toman"?`${fa(user.tomanBalance)} تومان`:`${faFixed(user.usdtBalance,4)} USDT`;
+
+  const submit=async()=>{
+    setMsg(null);if(cooldown>0)return;
+    if(!toExchange&&!dest.trim()){setMsg({text:"آدرس مقصد را وارد کنید.",type:"err"});return}
+    if(!toExchange&&destType==="unknown"){setMsg({text:"آدرس مقصد معتبر نیست.",type:"err"});return}
+    if(numAmount<=0){setMsg({text:"مبلغ معتبر وارد کنید.",type:"err"});return}
+    if(isCard){if(dest.length!==16){setMsg({text:"شماره کارت مقصد باید ۱۶ رقم باشد.",type:"err"});return}setMsg({text:"درخواست انتقال کارت به کارت ثبت شد.",type:"ok"});return}
+    const fee=asset==="usdt"&&(destType==="bsc"||destType==="trc20")?1:0;const total=numAmount+fee;
+    if(asset==="toman"&&total>user.tomanBalance){setMsg({text:"موجودی کافی نیست.",type:"err"});return}
+    if(asset==="usdt"&&total>user.usdtBalance){setMsg({text:"موجودی USDT کافی نیست.",type:"err"});return}
+    if(destType==="mobile"){setLoading(true);const exists=DB.userExists(dest.trim());setLoading(false);if(!exists){setMsg({text:"شماره موبایل وارد‌شده کاربر آن‌پرداز نیست.",type:"err"});return}}
+    const note=toExchange?"انتقال به کیف صرافی آن‌پرداز":destType==="bsc"?"انتقال به شبکه BSC":destType==="trc20"?"انتقال به شبکه TRC20":"انتقال داخلی";
+    const tx:TxRecord={id:genId(),userId:user.phone,type:"transfer",fromAsset:asset,toAsset:asset,amount:numAmount,fee,status:toExchange||destType==="mobile"?"done":"pending",createdAt:new Date().toISOString(),toAddress:toExchange?"exchange_wallet":dest.trim(),note};
+    const updated:UserData={...user,tomanBalance:asset==="toman"?user.tomanBalance-total:user.tomanBalance,usdtBalance:asset==="usdt"?user.usdtBalance-total:user.usdtBalance};
+    if(toExchange){const exW=DB.getExWallet();exW[asset==="toman"?"toman":"USDT"]=(exW[asset==="toman"?"toman":"USDT"]||0)+numAmount;DB.saveExWallet(exW)}
+    onUpdate(updated,tx);setDest("");setAmount("");setCooldown(600);playChime();setMsg({text:toExchange?"انتقال به کیف صرافی انجام شد.":"انتقال با موفقیت ثبت شد.",type:"ok"})
+  };
+
+  const padT=(n:number)=>String(Math.floor(n/60)).padStart(2,"0")+":"+String(n%60).padStart(2,"0");
+
+  return <div className="subscreen" dir="rtl">
+    <div className="subscreen-header">
+      <button className="back-btn" onClick={onBack}><Icon name="arrow" size={20}/></button>
+      <h2 className="subscreen-title">انتقال وجه</h2>
+      <div style={{width:36}}/>
+    </div>
+    <div className="subscreen-body">
+      {/* Source dropdown */}
+      <div style={{marginBottom:16}}>
+        <label className="field-label">مبدا انتقال</label>
+        <div style={{position:"relative"}}>
+          <button className="select-btn" onClick={()=>setShowSrcDrop(p=>!p)}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <div style={{width:36,height:36,borderRadius:10,background:isCard?"#2a1a4a":asset==="toman"?"rgba(0,200,150,0.15)":"rgba(255,196,57,0.15)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                {isCard?<Icon name="credit" size={16}/>:asset==="toman"?<span style={{color:"#00c896",fontWeight:800,fontSize:16}}>﷼</span>:<span style={{color:"#f5c23d",fontWeight:800,fontSize:14}}>₮</span>}
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontSize:14,fontWeight:700,color:"#f0f0f0"}}>{srcLabel}</div>
+                <div style={{fontSize:11,color:"#888",marginTop:2}}>{srcBalance}</div>
+              </div>
+            </div>
+            <Icon name="chevron" size={18}/>
+          </button>
+          {showSrcDrop&&<div className="source-dropdown">
+            <button className="source-drop-item" onClick={()=>selectSource("toman")}>
+              <span style={{width:32,height:32,borderRadius:9,background:"rgba(0,200,150,0.15)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{color:"#00c896",fontWeight:800}}>﷼</span></span>
+              <div><div style={{fontSize:13,fontWeight:700}}>کیف پول تومانی</div><div style={{fontSize:11,color:"#888"}}>{fa(user.tomanBalance)} تومان</div></div>
+              {source==="toman"&&<Icon name="check" size={16}/>}
+            </button>
+            <button className="source-drop-item" onClick={()=>selectSource("usdt")}>
+              <span style={{width:32,height:32,borderRadius:9,background:"rgba(245,194,61,0.15)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{color:"#f5c23d",fontWeight:800,fontSize:13}}>₮</span></span>
+              <div><div style={{fontSize:13,fontWeight:700}}>کیف پول تتر (USDT)</div><div style={{fontSize:11,color:"#888"}}>{faFixed(user.usdtBalance,4)} USDT</div></div>
+              {source==="usdt"&&<Icon name="check" size={16}/>}
+            </button>
+            {user.cards.map(c=><button key={c.id} className="source-drop-item" onClick={()=>selectSource(`card_${c.id}`)}>
+              <span style={{width:32,height:32,borderRadius:9,background:"rgba(74,158,255,0.15)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Icon name="credit" size={15}/></span>
+              <div><div style={{fontSize:13,fontWeight:700}}>{c.bank}</div><div style={{fontSize:11,color:"#888",direction:"ltr"}}>{c.number.replace(/(.{4})/g,"$1 ").trim()}</div></div>
+              {source===`card_${c.id}`&&<Icon name="check" size={16}/>}
+            </button>)}
+          </div>}
+        </div>
+      </div>
+
+      {/* Amount */}
+      <div style={{marginBottom:16}}>
+        <label className="field-label">مبلغ</label>
+        <div className="auth-input-wrap">
+          <input className="auth-input ltr" value={amount} onChange={e=>setAmount(e.target.value.replace(/[^0-9.]/g,""))} inputMode="decimal" placeholder="0" dir="ltr"/>
+          <span style={{color:"#888",fontSize:13,flexShrink:0}}>{asset==="toman"?"تومان":"USDT"}</span>
+        </div>
+      </div>
+
+      {/* Card-to-card destination */}
+      {isCard&&<div style={{marginBottom:16}}>
+        <label className="field-label">شماره کارت مقصد</label>
+        <div className="auth-input-wrap">
+          <input className="auth-input ltr" value={dest} onChange={e=>{const v=e.target.value.replace(/\D/g,"").slice(0,16);setDest(v)}} inputMode="numeric" placeholder="xxxx xxxx xxxx xxxx" dir="ltr"/>
+        </div>
+        {dest.length>0&&<div style={{fontSize:11,marginTop:4,color:dest.length===16?"#00c896":"#888"}}>{dest.length===16?"✓ شماره کارت معتبر":"شماره کارت ۱۶ رقم باید باشد"}</div>}
+      </div>}
+
+      {/* Destination */}
+      {!isCard&&<>
+        <div style={{marginBottom:8}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+            <label className="field-label" style={{margin:0}}>آدرس مقصد</label>
+            <button style={{background:"none",border:"none",color:"#00c896",fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",gap:4,fontFamily:"Vazirmatn"}} onClick={pickContact}><Icon name="contacts" size={14}/> از مخاطبین</button>
+          </div>
+          <div className="auth-input-wrap">
+            <input className="auth-input ltr" value={dest} onChange={e=>setDest(e.target.value)} placeholder="آدرس کیف پول USDT در شبکه BSC یا TRC20 یا شماره موبایل کاربر آن پرداز را وارد کنید" dir="ltr" style={{fontSize:12}}/>
+          </div>
+          {dest&&<div style={{fontSize:11,marginTop:4,padding:"4px 8px",borderRadius:6,display:"inline-block",background:destType==="unknown"?"rgba(232,81,42,0.1)":"rgba(0,200,150,0.1)",color:destType==="unknown"?"#e8512a":"#00c896"}}>
+            {destType==="mobile"?"👤 کاربر آن‌پرداز":destType==="bsc"?"🔗 آدرس BSC":destType==="trc20"?"🔗 آدرس TRC20":"⚠️ نامعتبر"}
+          </div>}
+        </div>
+        {/* Name-based search hint */}
+        {dest&&destType==="unknown"&&<div style={{marginBottom:12}}>
+          <div className="auth-input-wrap">
+            <Icon name="search" size={16}/><input className="auth-input" value={destSearch} onChange={e=>setDestSearch(e.target.value)} placeholder="جستجو بر اساس نام کاربر" style={{marginRight:8}}/>
+          </div>
+        </div>}
+        {/* Transfer to exchange */}
+        <button className={`exchange-transfer-btn ${toExchange?"active":""}`} onClick={()=>setToExchange(p=>!p)}>
+          <Icon name="trending-up" size={18}/>
+          <span>انتقال به کیف صرافی رمز ارز آن پرداز</span>
+          <div className={`toggle-dot ${toExchange?"on":""}`}/>
+        </button>
+        {asset==="usdt"&&(destType==="bsc"||destType==="trc20")&&!toExchange&&<div style={{fontSize:12,color:"#888",display:"flex",gap:6,alignItems:"center",marginBottom:8,padding:"8px 12px",background:"#1a1a1a",borderRadius:10}}><Icon name="info" size={13}/> کارمزد شبکه: ۱ USDT</div>}
+      </>}
+
+      {msg&&<p className={`field-msg ${msg.type}`}>{msg.text}</p>}
+      {cooldown>0
+        ?<div className="cooldown-btn"><Icon name="clock" size={16}/> تراکنش بعدی: <b>{padT(cooldown)}</b></div>
+        :<button className="primary-button" onClick={submit} disabled={loading}>{loading?"در حال بررسی...":"تأیید انتقال"} {!loading&&<Icon name="arrow" size={18}/>}</button>}
+    </div>
+  </div>;
+}
+
+// ─── Tether Swap Screen ───────────────────────────────────────────────────────
+function TetherSwapScreen({user,rate,onUpdate,onBack}:{user:UserData;rate:number;onUpdate:(u:UserData,tx:TxRecord)=>void;onBack:()=>void}){
+  const [from,setFrom]=useState<"toman"|"usdt">("toman");
+  const [amount,setAmount]=useState("");const [err,setErr]=useState("");const [cooldown,setCooldown]=useState(0);
+  useEffect(()=>{if(cooldown<=0)return;const t=setTimeout(()=>setCooldown(c=>c-1),1000);return()=>clearTimeout(t)},[cooldown]);
+  const to=from==="toman"?"usdt":"toman";const numAmount=parseFloat(amount)||0;
+  const converted=from==="toman"?numAmount/rate:numAmount*rate;
+  const submit=()=>{
+    if(cooldown>0)return;if(numAmount<=0){setErr("مبلغ معتبر وارد کنید.");return}
+    if(from==="toman"&&numAmount>user.tomanBalance){setErr("موجودی تومانی کافی نیست.");return}
+    if(from==="usdt"&&numAmount>user.usdtBalance){setErr("موجودی USDT کافی نیست.");return}
+    setErr("");
+    const tx:TxRecord={id:genId(),userId:user.phone,type:"swap",fromAsset:from,toAsset:to,amount:numAmount,convertedAmount:converted,fee:0,status:"done",createdAt:new Date().toISOString()};
+    const updated:UserData={...user,tomanBalance:from==="toman"?user.tomanBalance-numAmount:user.tomanBalance+converted,usdtBalance:from==="usdt"?user.usdtBalance-numAmount:user.usdtBalance+converted};
+    onUpdate(updated,tx);setAmount("");setCooldown(600);playChime();
+  };
+  const padT=(n:number)=>String(Math.floor(n/60)).padStart(2,"0")+":"+String(n%60).padStart(2,"0");
+  return <div className="subscreen" dir="rtl">
+    <div className="subscreen-header">
+      <button className="back-btn" onClick={onBack}><Icon name="arrow" size={20}/></button>
+      <h2 className="subscreen-title">تبدیل تتر</h2>
+      <div style={{width:36}}/>
+    </div>
+    <div className="subscreen-body">
+      <div style={{display:"flex",gap:8,marginBottom:20}}>
+        <button className={`ex-asset-btn ${from==="toman"?"active":""}`} onClick={()=>setFrom("toman")}>
+          <span className="ex-symbol toman">﷼</span><div><small>تومان</small><b>{fa(user.tomanBalance)}</b></div>
+        </button>
+        <button className={`ex-asset-btn ${from==="usdt"?"active":""}`} onClick={()=>setFrom("usdt")}>
+          <span className="ex-symbol usdt">₮</span><div><small>تتر USDT</small><b>{faFixed(user.usdtBalance)}</b></div>
+        </button>
+      </div>
+      <div className="exchange-input">
+        <label>از</label>
+        <div className="currency-chip"><span className={from}>{from==="toman"?"﷼":"₮"}</span>{from==="toman"?"تومان":"تتر"}</div>
+        <input value={amount} onChange={e=>setAmount(e.target.value.replace(/[^0-9.]/g,""))} inputMode="decimal" placeholder="۰" aria-label="مبلغ"/>
+      </div>
+      <div style={{display:"flex",justifyContent:"center",margin:"10px 0"}}>
+        <button className="swap-dir-btn" onClick={()=>setFrom(to)} aria-label="تعویض"><Icon name="swap" size={18}/></button>
+      </div>
+      <div className="exchange-input destination">
+        <label>به</label>
+        <div className="currency-chip"><span className={to}>{to==="toman"?"﷼":"₮"}</span>{to==="toman"?"تومان":"تتر"}</div>
+        <output>{numAmount>0?(to==="usdt"?converted.toFixed(6):fa(Math.round(converted))):"—"}</output>
+      </div>
+      <div className="rate-row" style={{marginTop:12}}><span>نرخ لحظه‌ای</span><b>{fa(Math.round(rate))} تومان</b></div>
+      {err&&<p className="field-err">{err}</p>}
+      {cooldown>0?<div className="cooldown-btn"><Icon name="clock" size={16}/> تراکنش بعدی: <b>{padT(cooldown)}</b></div>
+        :<button className="primary-button" style={{marginTop:16}} onClick={submit}>تأیید تبدیل <Icon name="arrow" size={18}/></button>}
+    </div>
+  </div>;
+}
+
+// ─── Charge/Internet Screen ───────────────────────────────────────────────────
+function ChargeScreen({type,onBack}:{type:"charge"|"internet";onBack:()=>void}){
+  const [phone,setPhone]=useState("");const [amount,setAmount]=useState("");const [done,setDone]=useState(false);
+  const packages=type==="internet"?["۱ گیگ - ۷ روز - ۱۵,۰۰۰ تومان","۵ گیگ - ۳۰ روز - ۵۵,۰۰۰ تومان","۲۰ گیگ - ۳۰ روز - ۱۵۰,۰۰۰ تومان","نامحدود - ۳۰ روز - ۳۵۰,۰۰۰ تومان"]:["۱۰,۰۰۰ تومان","۲۰,۰۰۰ تومان","۵۰,۰۰۰ تومان","۱۰۰,۰۰۰ تومان"];
+  const pickContact=async()=>{try{const c=await(navigator as any).contacts?.select(["name","tel"],{multiple:false});if(c&&c.length>0&&c[0].tel?.length>0)setPhone(c[0].tel[0].replace(/\s/g,""))}catch{alert("دسترسی به مخاطبین پشتیبانی نمی‌شود.")}};
+  const submit=()=>{if(!isIranPhone(phone)){alert("شماره موبایل معتبر وارد کنید.");return}setDone(true);setTimeout(()=>setDone(false),3000)};
+  return <div className="subscreen" dir="rtl">
+    <div className="subscreen-header">
+      <button className="back-btn" onClick={onBack}><Icon name="arrow" size={20}/></button>
+      <h2 className="subscreen-title">{type==="charge"?"شارژ مستقیم":"بسته اینترنت"}</h2>
+      <div style={{width:36}}/>
+    </div>
+    <div className="subscreen-body">
+      {done?<div style={{textAlign:"center",padding:"40px 0"}}>
+        <div style={{width:72,height:72,borderRadius:22,background:"rgba(0,200,150,0.1)",border:"2px solid rgba(0,200,150,0.3)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px",color:"#00c896"}}><Icon name="check" size={36}/></div>
+        <div style={{fontSize:18,fontWeight:800,color:"#f0f0f0",marginBottom:8}}>عملیات با موفقیت انجام شد</div>
+        <div style={{fontSize:13,color:"#888"}}>{type==="charge"?"شارژ":"بسته اینترنت"} به شماره <b dir="ltr">{phone}</b> ارسال شد.</div>
+      </div>:<>
+        <div style={{marginBottom:16}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+            <label className="field-label" style={{margin:0}}>شماره موبایل</label>
+            <button style={{background:"none",border:"none",color:"#00c896",fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",gap:4,fontFamily:"Vazirmatn"}} onClick={pickContact}><Icon name="contacts" size={14}/> از مخاطبین</button>
+          </div>
+          <div className="auth-input-wrap">
+            <input className="auth-input ltr" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="09xxxxxxxxx" inputMode="tel" maxLength={11} dir="ltr"/>
+          </div>
+        </div>
+        <label className="field-label">انتخاب {type==="charge"?"مبلغ":"بسته"}</label>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:20}}>
+          {packages.map(p=><button key={p} className={`pkg-btn ${amount===p?"active":""}`} onClick={()=>setAmount(p)}>{p}</button>)}
+        </div>
+        <button className="primary-button" onClick={submit}>تأیید و پرداخت</button>
+      </>}
+    </div>
+  </div>;
+}
+
+// ─── Bills Screen ─────────────────────────────────────────────────────────────
+function BillsScreen({onBack}:{onBack:()=>void}){
+  const [category,setCategory]=useState<string|null>(null);
+  const [billId,setBillId]=useState("");
+  const [result,setResult]=useState<string|null>(null);
+  const [loading,setLoading]=useState(false);
+  const categories=[
+    {id:"electricity",label:"برق",color:"#f5c23d",icon:"⚡"},
+    {id:"water",label:"آب",color:"#38bdf8",icon:"💧"},
+    {id:"gas",label:"گاز",color:"#fb923c",icon:"🔥"},
+    {id:"phone",label:"تلفن ثابت",color:"#a78bfa",icon:"📞"},
+    {id:"judiciary",label:"قبض قوه قضائیه",color:"#f5c23d",icon:"⚖️"},
+    {id:"property",label:"قبض ثبت اسناد",color:"#94a3b8",icon:"📋"},
+  ];
+  const inquire=()=>{if(!billId.trim()){alert("شناسه قبض را وارد کنید.");return}setLoading(true);setTimeout(()=>{setResult("بدهی پرداخت نشده‌ای وجود ندارد.");setLoading(false)},1200)};
+  if(category){
+    const cat=categories.find(c=>c.id===category)!;
+    const teleCode=category==="judiciary"?"۲۰۰۰۰۰۱":"۲۰۰۰۰۱۲";
+    return <div className="subscreen" dir="rtl">
+      <div className="subscreen-header">
+        <button className="back-btn" onClick={()=>{setCategory(null);setBillId("");setResult(null)}}><Icon name="arrow" size={20}/></button>
+        <h2 className="subscreen-title">{cat.label}</h2>
+        <div style={{width:36}}/>
+      </div>
+      <div className="subscreen-body">
+        <div style={{background:"#1e1e1e",borderRadius:14,padding:"14px 16px",marginBottom:20,borderRight:`3px solid ${cat.color}`}}>
+          <div style={{fontSize:13,color:cat.color,fontWeight:700,marginBottom:4}}>{cat.label.replace("قبض ","")}</div>
+          {(category==="judiciary"||category==="property")&&<div style={{fontSize:12,color:"#888"}}>کد تله‌پرداز : {teleCode}</div>}
+        </div>
+        <p style={{fontSize:13,color:"#aaa",marginBottom:16}}>لطفا شناسه دریافت وجه خود را وارد نمایید.</p>
+        <div style={{background:"#1e1e1e",borderRadius:14,padding:"14px 16px",marginBottom:20,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <input style={{flex:1,background:"none",border:"none",outline:"none",color:"#f0f0f0",fontSize:16,fontFamily:"Vazirmatn",direction:"ltr",textAlign:"left"}} value={billId} onChange={e=>setBillId(e.target.value.replace(/\D/g,""))} placeholder="شناسه دریافت وجه" inputMode="numeric" dir="ltr"/>
+          <span style={{fontSize:12,color:"#888",flexShrink:0,marginRight:8}}>شناسه</span>
+        </div>
+        {result&&<div style={{fontSize:13,color:"#00c896",textAlign:"center",padding:"12px",background:"rgba(0,200,150,0.1)",borderRadius:12,marginBottom:16}}>{result}</div>}
+        <button className="primary-button" style={{background:"#e8512a"}} onClick={inquire} disabled={loading}>{loading?"در حال بررسی...":"استعلام"}</button>
+      </div>
+    </div>;
+  }
+  return <div className="subscreen" dir="rtl">
+    <div className="subscreen-header">
+      <button className="back-btn" onClick={onBack}><Icon name="arrow" size={20}/></button>
+      <h2 className="subscreen-title">پرداخت قبض</h2>
+      <div style={{width:36}}/>
+    </div>
+    <div className="subscreen-body">
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        {categories.map(cat=><button key={cat.id} onClick={()=>setCategory(cat.id)} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10,background:"#1e1e1e",border:"1px solid #2a2a2a",borderRadius:16,padding:"20px 12px",cursor:"pointer",color:"#f0f0f0"}}>
+          <div style={{fontSize:36}}>{cat.icon}</div>
+          <div style={{fontSize:13,fontWeight:700,textAlign:"center"}}>{cat.label}</div>
+        </button>)}
+      </div>
+    </div>
+  </div>;
+}
+
+// ─── Insurance Screen ─────────────────────────────────────────────────────────
+function InsuranceScreen({initialTab,onBack}:{initialTab:"third-party"|"body"|"motorcycle";onBack:()=>void}){
+  const [tab,setTab]=useState<"third-party"|"body"|"motorcycle">(initialTab);
+  const [plate,setPlate]=useState("");
+  const [hasPrev,setHasPrev]=useState<string|null>(null);
+  const [motoType,setMotoType]=useState("");
+  const [motoYear,setMotoYear]=useState("");
+  const [motoColor,setMotoColor]=useState("");
+  const [submitted,setSubmitted]=useState(false);
+
+  const PlateInput=()=><div style={{background:"#1e1e1e",borderRadius:12,padding:"12px 14px",display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+    <div style={{background:"#1a4fa0",borderRadius:8,padding:"6px 10px",display:"flex",flexDirection:"column",alignItems:"center",color:"#fff",fontSize:10,fontWeight:700,minWidth:44}}>
+      <div>🇮🇷</div><div>ایران</div>
+    </div>
+    <input style={{flex:1,background:"none",border:"none",outline:"none",color:"#f0f0f0",fontSize:16,fontFamily:"Vazirmatn",direction:"ltr",letterSpacing:4}} value={plate} onChange={e=>setPlate(e.target.value)} placeholder="-- • --- --" dir="ltr"/>
+  </div>;
+
+  return <div className="subscreen" dir="rtl">
+    <div className="subscreen-header">
+      <button className="back-btn" onClick={onBack}><Icon name="arrow" size={20}/></button>
+      <h2 className="subscreen-title">بیمه خودرو</h2>
+      <div style={{width:36}}/>
+    </div>
+    <div style={{display:"flex",borderBottom:"1px solid #1e1e1e",padding:"0 4px",overflowX:"auto"}}>
+      {([["third-party","شخص ثالث"],["body","بیمه بدنه"],["motorcycle","موتورسیکلت"]] as const).map(([id,label])=>
+        <button key={id} onClick={()=>{setTab(id);setSubmitted(false)}} style={{flex:1,padding:"12px 8px",background:"none",border:"none",borderBottom:tab===id?"2px solid #4a9eff":"2px solid transparent",color:tab===id?"#4a9eff":"#666",fontSize:12,fontWeight:tab===id?700:400,cursor:"pointer",fontFamily:"Vazirmatn",whiteSpace:"nowrap"}}>{label}</button>
+      )}
+    </div>
+    <div className="subscreen-body">
+      {tab==="third-party"&&<>
+        <div style={{color:"#4a9eff",fontWeight:700,fontSize:14,marginBottom:16}}>خرید بیمه شخص ثالث</div>
+        <div style={{fontSize:13,color:"#aaa",marginBottom:8}}>پلاک خودرو</div>
+        <PlateInput/>
+        {submitted
+          ?<div style={{textAlign:"center",padding:"20px 0",color:"#00c896"}}><Icon name="check" size={48}/><div style={{marginTop:12,fontSize:14,fontWeight:700}}>استعلام قیمت ارسال شد</div></div>
+          :<button className="primary-button" style={{background:"#e8512a"}} onClick={()=>setSubmitted(true)}>استعلام قیمت</button>}
+      </>}
+      {tab==="body"&&<>
+        <div style={{color:"#4a9eff",fontWeight:700,fontSize:14,marginBottom:16}}>خرید بیمه بدنه</div>
+        <div style={{fontSize:13,color:"#aaa",marginBottom:8}}>پلاک خودرو</div>
+        <PlateInput/>
+        <div style={{fontSize:13,color:"#f0f0f0",fontWeight:700,marginBottom:12}}>آیا خودرو سابقه بیمه بدنه دارد؟</div>
+        {[["yes","بله، دارای سابقه بیمه بدنه است"],["no","خیر، سابقه بیمه بدنه ندارد"],["new","خودرو صفر کیلومتر است"]].map(([v,label])=>
+          <button key={v} onClick={()=>setHasPrev(v)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",background:"#1e1e1e",border:`1px solid ${hasPrev===v?"#4a9eff":"#2a2a2a"}`,borderRadius:12,padding:"14px 16px",color:"#f0f0f0",cursor:"pointer",fontFamily:"Vazirmatn",fontSize:13,marginBottom:8}}>
+            {label}
+            <div style={{width:18,height:18,borderRadius:"50%",border:`2px solid ${hasPrev===v?"#4a9eff":"#555"}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              {hasPrev===v&&<div style={{width:8,height:8,borderRadius:"50%",background:"#4a9eff"}}/>}
+            </div>
+          </button>
+        )}
+        {submitted
+          ?<div style={{textAlign:"center",padding:"20px 0",color:"#00c896"}}><Icon name="check" size={48}/><div style={{marginTop:12,fontSize:14,fontWeight:700}}>درخواست ارسال شد</div></div>
+          :<><button className="primary-button" style={{background:"#e8512a",marginBottom:12}} onClick={()=>setSubmitted(true)}>تایید اطلاعات</button>
+          <div style={{textAlign:"center",fontSize:12,color:"#666",marginBottom:8}}>یا</div>
+          <button style={{width:"100%",background:"none",border:"none",color:"#00c896",fontSize:13,cursor:"pointer",fontFamily:"Vazirmatn"}}>انتخاب پلاک از لیست خودروها ←</button></>}
+      </>}
+      {tab==="motorcycle"&&<>
+        <div style={{color:"#4a9eff",fontWeight:700,fontSize:14,marginBottom:4}}>خرید بیمه شخص ثالث موتور سیکلت</div>
+        <div style={{fontSize:12,color:"#888",marginBottom:16}}>خرید بیمه‌نامه برای موتورسیکلت‌های <b style={{color:"#f0f0f0"}}>شخصی</b> امکان‌پذیر است.</div>
+        {([["نوع موتورسیکلت",motoType,setMotoType],["سال ساخت",motoYear,setMotoYear],["رنگ موتورسیکلت",motoColor,setMotoColor]] as [string,string,React.Dispatch<React.SetStateAction<string>>][]).map(([label,val])=>
+          <div key={label} style={{background:"#1e1e1e",borderRadius:12,padding:"14px 16px",marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+            <span style={{fontSize:13,color:val?"#f0f0f0":"#888"}}>{val||label}</span>
+            <Icon name="chevron" size={16}/>
+          </div>
+        )}
+        {submitted
+          ?<div style={{textAlign:"center",padding:"20px 0",color:"#00c896"}}><Icon name="check" size={48}/><div style={{marginTop:12,fontSize:14,fontWeight:700}}>درخواست ارسال شد</div></div>
+          :<button className="primary-button" style={{background:"#e8512a",marginBottom:16}} onClick={()=>setSubmitted(true)}>تایید اطلاعات</button>}
+        <div style={{background:"#1a1a2e",border:"1px solid #2a2a4e",borderRadius:12,padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}}>
+          <div><div style={{fontSize:13,fontWeight:700,color:"#f0f0f0"}}>درخواست کمک</div><div style={{fontSize:11,color:"#888",marginTop:2}}>سوالات متداول و تماس تلفنی</div></div>
+          <div style={{width:32,height:32,borderRadius:"50%",background:"#4a9eff",display:"flex",alignItems:"center",justifyContent:"center"}}><Icon name="question" size={16}/></div>
+        </div>
+      </>}
+    </div>
+  </div>;
+}
+
+// ─── Violations Screen ────────────────────────────────────────────────────────
+function ViolationsScreen({onBack}:{onBack:()=>void}){
+  const [inquired,setInquired]=useState(false);
+  const plate="۲۴ | ۶۱۵ م ۱۹";
+  return <div className="subscreen" dir="rtl">
+    <div className="subscreen-header">
+      <button className="back-btn" onClick={onBack}><Icon name="arrow" size={20}/></button>
+      <h2 className="subscreen-title">خلافی خودرو</h2>
+      <div style={{width:36}}/>
+    </div>
+    <div className="subscreen-body">
+      <div style={{textAlign:"center",marginBottom:20}}>
+        <div style={{width:72,height:72,borderRadius:"50%",background:"rgba(168,85,247,0.15)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 12px",fontSize:32}}>🚦🚗</div>
+        <div style={{fontSize:16,fontWeight:800,color:"#f0f0f0"}}>پرداخت خلافی خودرو</div>
+      </div>
+      <div style={{background:"#1e1e1e",borderRadius:14,padding:"14px 16px",marginBottom:12,display:"flex",alignItems:"center",gap:12}}>
+        <div style={{background:"#1a4fa0",borderRadius:8,padding:"8px 10px",display:"flex",flexDirection:"column",alignItems:"center",color:"#fff",fontSize:9,fontWeight:700,flexShrink:0}}>
+          <div>🇮🇷</div><div>ایران</div>
+        </div>
+        <div style={{flex:1}}>
+          <div style={{fontSize:14,fontWeight:800,color:"#f0f0f0",direction:"ltr"}}>{plate}</div>
+          <div style={{fontSize:11,color:"#888",marginTop:2}}>خودرو سواری</div>
+        </div>
+      </div>
+      <div style={{background:"#1e1e1e",borderRadius:14,padding:"14px 16px",marginBottom:20,display:"flex",alignItems:"center",gap:10}}>
+        <div style={{width:32,height:32,borderRadius:"50%",background:"rgba(74,158,255,0.15)",display:"flex",alignItems:"center",justifyContent:"center",color:"#4a9eff",flexShrink:0}}><Icon name="info" size={16}/></div>
+        <div style={{fontSize:13,color:"#aaa"}}>{inquired?"خلافی پرداخت نشده‌ای وجود ندارد.":"تا به حال استعلامی انجام نداده‌اید."}</div>
+      </div>
+      <button className="primary-button" style={{background:"#e8512a"}} onClick={()=>setInquired(true)}>استعلام جدید</button>
+    </div>
+  </div>;
+}
+
+// ─── Freeway Toll Screen ──────────────────────────────────────────────────────
+function FreewayScreen({onBack}:{onBack:()=>void}){
+  const [autoPayEnabled,setAutoPayEnabled]=useState(true);
+  const plate="۲۴ | ۶۱۵ م ۱۹";
+  return <div className="subscreen" dir="rtl">
+    <div className="subscreen-header">
+      <button className="back-btn" onClick={onBack}><Icon name="arrow" size={20}/></button>
+      <h2 className="subscreen-title">عوارض آزادراهی</h2>
+      <div style={{width:36}}/>
+    </div>
+    <div className="subscreen-body">
+      <div style={{textAlign:"center",marginBottom:20}}>
+        <div style={{width:72,height:72,borderRadius:"50%",background:"rgba(168,85,247,0.15)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 12px",fontSize:32}}>🛣️</div>
+        <div style={{fontSize:16,fontWeight:800,color:"#f0f0f0"}}>عوارض آزادراه</div>
+      </div>
+      <div style={{background:"#1e1e1e",borderRadius:14,padding:"14px 16px",marginBottom:12}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+          <div style={{fontSize:12,color:"#888"}}>خودرو سواری</div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <div style={{background:"#1a4fa0",borderRadius:6,padding:"4px 8px",display:"flex",flexDirection:"column",alignItems:"center",color:"#fff",fontSize:9,fontWeight:700}}><div>🇮🇷</div><div>ایران</div></div>
+            <div style={{fontSize:13,fontWeight:700,color:"#f0f0f0",direction:"ltr"}}>{plate}</div>
+          </div>
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12}}>
+          <div>
+            <div style={{fontSize:13,fontWeight:700,color:"#f0f0f0",marginBottom:4}}>پرداخت خودکار عوارض آزادراه</div>
+            <div style={{fontSize:11,color:"#888",lineHeight:1.6}}>با فعال کردن این گزینه، پرداخت خودکار از کیف پول آپ شما انجام می‌گیرد.</div>
+          </div>
+          <button onClick={()=>setAutoPayEnabled(p=>!p)} style={{background:"none",border:"none",cursor:"pointer",flexShrink:0}}>
+            <div style={{width:44,height:24,borderRadius:12,background:autoPayEnabled?"#00c896":"#2a2a2a",position:"relative",transition:"background 0.2s"}}>
+              <div style={{position:"absolute",top:2,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"all 0.2s",left:autoPayEnabled?22:2}}/>
+            </div>
+          </button>
+        </div>
+      </div>
+      <div style={{background:"#1e1e1e",borderRadius:14,padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div style={{fontSize:14,fontWeight:700,color:"#f0f0f0"}}>مبلغ قابل پرداخت</div>
+        <div style={{fontSize:14,fontWeight:800,color:"#00c896"}}>بدون بدهی</div>
+      </div>
+    </div>
+  </div>;
+}
+
+// ─── Tehran Traffic Screen ────────────────────────────────────────────────────
+function TrafficScreen({onBack}:{onBack:()=>void}){
+  const [autoPayEnabled,setAutoPayEnabled]=useState(false);
+  const plate="۲۴ | ۶۱۵ م ۱۹";
+  return <div className="subscreen" dir="rtl">
+    <div className="subscreen-header">
+      <button className="back-btn" onClick={onBack}><Icon name="arrow" size={20}/></button>
+      <h2 className="subscreen-title">طرح ترافیک</h2>
+      <div style={{width:36}}/>
+    </div>
+    <div className="subscreen-body">
+      <div style={{textAlign:"center",marginBottom:20}}>
+        <div style={{width:72,height:72,borderRadius:"50%",background:"rgba(168,85,247,0.15)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 12px",fontSize:32}}>📷</div>
+        <div style={{fontSize:16,fontWeight:800,color:"#f0f0f0",marginBottom:4}}>پرداخت بدهی طرح ترافیک</div>
+        <div style={{fontSize:13,color:"#888"}}>مجموع بدهی: <span style={{color:"#00c896",fontWeight:700}}>بدون بدهی</span></div>
+      </div>
+      <div style={{background:"#1e1e1e",borderRadius:14,padding:"14px 16px",marginBottom:12}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+          <div style={{fontSize:12,color:"#888"}}>خودرو سواری</div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <div style={{background:"#1a4fa0",borderRadius:6,padding:"4px 8px",display:"flex",flexDirection:"column",alignItems:"center",color:"#fff",fontSize:9,fontWeight:700}}><div>🇮🇷</div><div>ایران</div></div>
+            <div style={{fontSize:13,fontWeight:700,color:"#f0f0f0",direction:"ltr"}}>{plate}</div>
+          </div>
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12}}>
+          <div>
+            <div style={{fontSize:13,fontWeight:700,color:"#f0f0f0",marginBottom:4}}>پرداخت خودکار بدهی طرح ترافیک</div>
+            <div style={{fontSize:11,color:"#888",lineHeight:1.6}}>با فعال کردن این گزینه، پرداخت خودکار از کیف پول آپ شما انجام می‌گیرد.</div>
+          </div>
+          <button onClick={()=>setAutoPayEnabled(p=>!p)} style={{background:"none",border:"none",cursor:"pointer",flexShrink:0}}>
+            <div style={{width:44,height:24,borderRadius:12,background:autoPayEnabled?"#00c896":"#2a2a2a",position:"relative",transition:"background 0.2s"}}>
+              <div style={{position:"absolute",top:2,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"all 0.2s",left:autoPayEnabled?22:2}}/>
+            </div>
+          </button>
+        </div>
+      </div>
+      <div style={{background:"#1e1e1e",borderRadius:14,padding:"14px 16px",display:"flex",alignItems:"center",gap:10}}>
+        <div style={{width:28,height:28,borderRadius:"50%",background:"rgba(0,200,150,0.15)",display:"flex",alignItems:"center",justifyContent:"center",color:"#00c896",flexShrink:0}}><Icon name="check" size={14}/></div>
+        <div style={{fontSize:13,color:"#aaa"}}>بدهی پرداخت نشده‌ای ندارید.</div>
+      </div>
+    </div>
+  </div>;
+}
+
+// ─── Car Services Hub ─────────────────────────────────────────────────────────
+function CarServicesScreen({onBack}:{onBack:()=>void}){
+  const [inner,setInner]=useState<null|"violations"|"freeway"|"traffic">(null);
+  if(inner==="violations")return <ViolationsScreen onBack={()=>setInner(null)}/>;
+  if(inner==="freeway")return <FreewayScreen onBack={()=>setInner(null)}/>;
+  if(inner==="traffic")return <TrafficScreen onBack={()=>setInner(null)}/>;
+  const plate="۲۴ | ۶۱۵ م ۱۹";
+  const services=[
+    {label:"عوارض آزادراهی",status:"بدون بدهی",statusColor:"#00c896",icon:"🛣️",action:"freeway" as const},
+    {label:"خلافی",status:"استعلام",statusColor:"#f5c23d",icon:"🚦",action:"violations" as const},
+    {label:"طرح ترافیک",sub:"ویژه تهران",status:"بدون بدهی",statusColor:"#00c896",icon:"📷",action:"traffic" as const},
+  ];
+  return <div className="subscreen" dir="rtl">
+    <div className="subscreen-header">
+      <button className="back-btn" onClick={onBack}><Icon name="arrow" size={20}/></button>
+      <h2 className="subscreen-title">خدمات خودرویی</h2>
+      <div style={{width:36}}/>
+    </div>
+    <div className="subscreen-body">
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+        <div style={{fontSize:14,fontWeight:700,color:"#f0f0f0"}}>وسیله‌های نقلیه</div>
+        <button style={{background:"none",border:"none",color:"#00c896",fontSize:13,cursor:"pointer",fontFamily:"Vazirmatn",display:"flex",alignItems:"center",gap:4}}><Icon name="plus" size={14}/> افزودن وسیله نقلیه</button>
+      </div>
+      <div style={{background:"#1e1e1e",borderRadius:14,padding:"14px 16px",marginBottom:16,display:"flex",alignItems:"center",gap:12}}>
+        <div style={{background:"#1a4fa0",borderRadius:8,padding:"8px 12px",display:"flex",flexDirection:"column",alignItems:"center",color:"#fff",fontSize:10,fontWeight:700,flexShrink:0}}>
+          <div>🇮🇷</div><div>ایران</div>
+        </div>
+        <div style={{flex:1}}>
+          <div style={{fontSize:16,fontWeight:800,color:"#f0f0f0",direction:"ltr"}}>{plate}</div>
+          <div style={{fontSize:12,color:"#888",marginTop:2}}>خودرو سواری</div>
+        </div>
+      </div>
+      <div style={{fontSize:12,color:"#888",textAlign:"center",padding:"8px 0",marginBottom:12,borderTop:"1px solid #1e1e1e",borderBottom:"1px solid #1e1e1e"}}>خدمات پرطرفدار</div>
+      {services.map(s=><button key={s.label} onClick={()=>setInner(s.action)} style={{display:"flex",alignItems:"center",width:"100%",background:"#1e1e1e",border:"1px solid #2a2a2a",borderRadius:14,padding:"14px 16px",marginBottom:10,cursor:"pointer",color:"#f0f0f0",textAlign:"right"}}>
+        <div style={{fontSize:24,width:44,height:44,borderRadius:12,background:"rgba(167,85,247,0.15)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginLeft:12}}>{s.icon}</div>
+        <div style={{flex:1}}>
+          <div style={{fontSize:14,fontWeight:700}}>{s.label}</div>
+          {"sub" in s&&s.sub&&<div style={{fontSize:11,color:"#888",marginTop:2}}>{s.sub}</div>}
+        </div>
+        <div style={{background:`${s.statusColor}25`,borderRadius:8,padding:"4px 10px",fontSize:11,color:s.statusColor,marginLeft:8,flexShrink:0}}>{s.status}</div>
+        <Icon name="arrow" size={16}/>
+      </button>)}
+      <div style={{textAlign:"center",marginTop:8}}>
+        <div style={{fontSize:12,color:"#888",marginBottom:8}}>پلاک ۱ از ۱</div>
+        <button style={{background:"none",border:"none",color:"#00c896",fontSize:12,cursor:"pointer",fontFamily:"Vazirmatn"}}>مدیریت پلاک‌ها ←</button>
+      </div>
+    </div>
+  </div>;
+}
+
+// ─── Sana Registration Screen ─────────────────────────────────────────────────
+function SanaScreen({onBack}:{onBack:()=>void}){
+  const [nationalId,setNationalId]=useState("");const [phone,setPhone]=useState("");const [done,setDone]=useState(false);
+  const submit=()=>{if(!nationalId||!phone){alert("تمام فیلدها الزامی است.");return}setDone(true)};
+  return <div className="subscreen" dir="rtl">
+    <div className="subscreen-header">
+      <button className="back-btn" onClick={onBack}><Icon name="arrow" size={20}/></button>
+      <h2 className="subscreen-title">ثبت‌نام ثنا</h2>
+      <div style={{width:36}}/>
+    </div>
+    <div className="subscreen-body">
+      {done?<div style={{textAlign:"center",padding:"40px 0"}}>
+        <div style={{color:"#00c896",marginBottom:12}}><Icon name="check" size={56}/></div>
+        <div style={{fontSize:16,fontWeight:700,color:"#f0f0f0",marginBottom:8}}>ثبت‌نام با موفقیت انجام شد</div>
+        <div style={{fontSize:13,color:"#888"}}>اطلاعات شما در سامانه ثنا ثبت شد.</div>
+      </div>:<>
+        <div style={{background:"#1e1e1e",borderRadius:14,padding:"14px 16px",marginBottom:20,borderRight:"3px solid #64748b"}}>
+          <div style={{fontSize:13,color:"#94a3b8",fontWeight:700,marginBottom:2}}>سامانه ثنا</div>
+          <div style={{fontSize:11,color:"#888"}}>ثبت‌نام در سامانه خدمات قضایی الکترونیک ایران</div>
+        </div>
+        <div style={{marginBottom:16}}>
+          <label className="field-label">کد ملی</label>
+          <div className="auth-input-wrap"><input className="auth-input ltr" value={nationalId} onChange={e=>setNationalId(e.target.value.replace(/\D/g,"").slice(0,10))} inputMode="numeric" placeholder="۱۰ رقم" dir="ltr" maxLength={10}/></div>
+        </div>
+        <div style={{marginBottom:20}}>
+          <label className="field-label">شماره موبایل</label>
+          <div className="auth-input-wrap"><input className="auth-input ltr" value={phone} onChange={e=>setPhone(e.target.value)} inputMode="tel" placeholder="09xxxxxxxxx" dir="ltr" maxLength={11}/></div>
+        </div>
+        <button className="primary-button" style={{background:"#e8512a"}} onClick={submit}>ثبت‌نام</button>
+      </>}
+    </div>
+  </div>;
+}
+
+// ─── Judiciary Bill Screen ────────────────────────────────────────────────────
+function JudiciaryBillScreen({onBack}:{onBack:()=>void}){
+  const [billId,setBillId]=useState("");const [result,setResult]=useState<string|null>(null);const [loading,setLoading]=useState(false);
+  const inquire=()=>{if(!billId.trim()){alert("شناسه را وارد کنید.");return}setLoading(true);setTimeout(()=>{setResult("بدهی پرداخت نشده‌ای وجود ندارد.");setLoading(false)},1200)};
+  return <div className="subscreen" dir="rtl">
+    <div className="subscreen-header">
+      <button className="back-btn" onClick={onBack}><Icon name="arrow" size={20}/></button>
+      <h2 className="subscreen-title">قبض قوه قضائیه</h2>
+      <div style={{width:36}}/>
+    </div>
+    <div className="subscreen-body">
+      <div style={{background:"#1e1e1e",borderRadius:14,padding:"14px 16px",marginBottom:20,borderRight:"3px solid #f5c23d"}}>
+        <div style={{fontSize:13,color:"#f5c23d",fontWeight:700,marginBottom:4}}>قوه قضائیه</div>
+        <div style={{fontSize:12,color:"#888"}}>کد تله‌پرداز : ۲۰۰۰۰۰۱</div>
+      </div>
+      <p style={{fontSize:13,color:"#aaa",marginBottom:16}}>لطفا شناسه دریافت وجه خود را وارد نمایید.</p>
+      <div style={{background:"#1e1e1e",borderRadius:14,padding:"14px 16px",marginBottom:20,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <input style={{flex:1,background:"none",border:"none",outline:"none",color:"#f0f0f0",fontSize:16,fontFamily:"Vazirmatn",direction:"ltr",textAlign:"left"}} value={billId} onChange={e=>setBillId(e.target.value.replace(/\D/g,""))} placeholder="شناسه دریافت وجه" inputMode="numeric" dir="ltr"/>
+        <span style={{fontSize:12,color:"#888",flexShrink:0,marginRight:8}}>شناسه</span>
+      </div>
+      {result&&<div style={{fontSize:13,color:"#00c896",textAlign:"center",padding:"12px",background:"rgba(0,200,150,0.1)",borderRadius:12,marginBottom:16}}>{result}</div>}
+      <button className="primary-button" style={{background:"#e8512a"}} onClick={inquire} disabled={loading}>{loading?"در حال بررسی...":"استعلام"}</button>
+    </div>
+  </div>;
+}
+
+// ─── Property Registration Bill Screen ────────────────────────────────────────
+function PropertyRegBillScreen({onBack}:{onBack:()=>void}){
+  const [billId,setBillId]=useState("");const [result,setResult]=useState<string|null>(null);const [loading,setLoading]=useState(false);
+  const inquire=()=>{if(!billId.trim()){alert("شناسه را وارد کنید.");return}setLoading(true);setTimeout(()=>{setResult("بدهی پرداخت نشده‌ای وجود ندارد.");setLoading(false)},1200)};
+  return <div className="subscreen" dir="rtl">
+    <div className="subscreen-header">
+      <button className="back-btn" onClick={onBack}><Icon name="arrow" size={20}/></button>
+      <h2 className="subscreen-title">قبض ثبت اسناد و املاک</h2>
+      <div style={{width:36}}/>
+    </div>
+    <div className="subscreen-body">
+      <div style={{background:"#1e1e1e",borderRadius:14,padding:"14px 16px",marginBottom:20,borderRight:"3px solid #94a3b8"}}>
+        <div style={{fontSize:13,color:"#94a3b8",fontWeight:700,marginBottom:4}}>ثبت اسناد و املاک</div>
+        <div style={{fontSize:12,color:"#888"}}>کد تله‌پرداز : ۲۰۰۰۰۱۲</div>
+      </div>
+      <p style={{fontSize:13,color:"#aaa",marginBottom:16}}>لطفا شناسه دریافت وجه خود را وارد نمایید.</p>
+      <div style={{background:"#1e1e1e",borderRadius:14,padding:"14px 16px",marginBottom:20,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <input style={{flex:1,background:"none",border:"none",outline:"none",color:"#f0f0f0",fontSize:16,fontFamily:"Vazirmatn",direction:"ltr",textAlign:"left"}} value={billId} onChange={e=>setBillId(e.target.value.replace(/\D/g,""))} placeholder="شناسه دریافت وجه" inputMode="numeric" dir="ltr"/>
+        <span style={{fontSize:12,color:"#888",flexShrink:0,marginRight:8}}>شناسه</span>
+      </div>
+      {result&&<div style={{fontSize:13,color:"#00c896",textAlign:"center",padding:"12px",background:"rgba(0,200,150,0.1)",borderRadius:12,marginBottom:16}}>{result}</div>}
+      <button className="primary-button" style={{background:"#e8512a"}} onClick={inquire} disabled={loading}>{loading?"در حال بررسی...":"استعلام"}</button>
+    </div>
+  </div>;
+}
+
+// ─── Charity Screen ───────────────────────────────────────────────────────────
+function CharityScreen({onBack}:{onBack:()=>void}){
+  const [selected,setSelected]=useState<string|null>(null);const [amount,setAmount]=useState("");const [done,setDone]=useState(false);
+  const orgs=[
+    {id:"red-crescent",name:"هلال احمر",desc:"کمک به آسیب‌دیدگان حوادث",icon:"❤️"},
+    {id:"komite",name:"کمیته امداد امام خمینی",desc:"حمایت از نیازمندان",icon:"🤝"},
+    {id:"children",name:"انجمن حمایت از کودکان",desc:"کمک به کودکان بی‌سرپرست",icon:"👧"},
+    {id:"environment",name:"سازمان محیط زیست",desc:"کمک به حفظ طبیعت",icon:"🌱"},
+    {id:"barekat",name:"بنیاد برکت",desc:"توانمندسازی محرومان",icon:"🏠"},
+  ];
+  const presets=["۱۰,۰۰۰ تومان","۵۰,۰۰۰ تومان","۱۰۰,۰۰۰ تومان","۵۰۰,۰۰۰ تومان"];
+  if(done)return <div className="subscreen" dir="rtl">
+    <div className="subscreen-header"><button className="back-btn" onClick={()=>setDone(false)}><Icon name="arrow" size={20}/></button><h2 className="subscreen-title">نیکوکاری</h2><div style={{width:36}}/></div>
+    <div className="subscreen-body" style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:300}}>
+      <div style={{fontSize:56,marginBottom:16}}>🤲</div>
+      <div style={{fontSize:18,fontWeight:800,color:"#f0f0f0",marginBottom:8}}>با سپاس از نیکوکاری شما</div>
+      <div style={{fontSize:13,color:"#888",textAlign:"center"}}>کمک شما به دست نیازمندان می‌رسد.</div>
+    </div>
+  </div>;
+  return <div className="subscreen" dir="rtl">
+    <div className="subscreen-header"><button className="back-btn" onClick={onBack}><Icon name="arrow" size={20}/></button><h2 className="subscreen-title">نیکوکاری</h2><div style={{width:36}}/></div>
+    <div className="subscreen-body">
+      <div style={{fontSize:14,fontWeight:700,color:"#f0f0f0",marginBottom:12}}>انتخاب سازمان خیریه</div>
+      {orgs.map(org=><button key={org.id} onClick={()=>setSelected(selected===org.id?null:org.id)} style={{display:"flex",alignItems:"center",gap:12,width:"100%",background:selected===org.id?"rgba(0,200,150,0.08)":"#1e1e1e",border:`1px solid ${selected===org.id?"#00c896":"#2a2a2a"}`,borderRadius:14,padding:"14px 16px",marginBottom:8,cursor:"pointer",color:"#f0f0f0",textAlign:"right"}}>
+        <div style={{fontSize:28,width:44,height:44,borderRadius:12,background:"#141414",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{org.icon}</div>
+        <div style={{flex:1}}>
+          <div style={{fontSize:14,fontWeight:700}}>{org.name}</div>
+          <div style={{fontSize:11,color:"#888",marginTop:2}}>{org.desc}</div>
+        </div>
+        {selected===org.id&&<Icon name="check" size={18}/>}
+      </button>)}
+      {selected&&<>
+        <div style={{fontSize:14,fontWeight:700,color:"#f0f0f0",marginTop:16,marginBottom:12}}>مبلغ کمک</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
+          {presets.map(p=><button key={p} onClick={()=>setAmount(p)} className={`pkg-btn ${amount===p?"active":""}`}>{p}</button>)}
+        </div>
+        <button className="primary-button" style={{background:"#e8512a"}} onClick={()=>{if(!amount){alert("مبلغ را انتخاب کنید.");return}setDone(true)}}>اهدای کمک 🤲</button>
+      </>}
+    </div>
+  </div>;
+}
+
+// ─── Service Placeholder Screen ───────────────────────────────────────────────
+function ServiceScreen({name,onBack}:{name:string;onBack:()=>void}){
+  return <div className="subscreen" dir="rtl">
+    <div className="subscreen-header">
+      <button className="back-btn" onClick={onBack}><Icon name="arrow" size={20}/></button>
+      <h2 className="subscreen-title">{name}</h2>
+      <div style={{width:36}}/>
+    </div>
+    <div className="subscreen-body" style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:300}}>
+      <div style={{color:"#444",marginBottom:16}}><Icon name="clock" size={56}/></div>
+      <div style={{fontSize:18,fontWeight:700,color:"#666",marginBottom:8}}>به‌زودی</div>
+      <div style={{fontSize:13,color:"#555",textAlign:"center"}}>{name} در حال توسعه است و به‌زودی فعال می‌شود.</div>
+    </div>
+  </div>;
+}
+
+// ─── Exchange Screen ──────────────────────────────────────────────────────────
+function ExchangeScreen({user,onBack}:{user:UserData;onBack:()=>void}){
+  const [tab,setTab]=useState<"market"|"trade"|"orders"|"wallet">("market");
+  const [selectedPair,setSelectedPair]=useState("BTC/USDT");
+  const [prices,setPrices]=useState({...INITIAL_PRICES});
+  const [changes,setChanges]=useState<Record<string,number>>({});
+  const [exWallet,setExWallet]=useState<ExWallet>(DB.getExWallet());
+  const [orders,setOrders]=useState<ExOrder[]>(DB.getExOrders());
+  const [side,setSide]=useState<"buy"|"sell">("buy");
+  const [price,setPrice]=useState("");const [qty,setQty]=useState("");
+  const [pairSearch,setPairSearch]=useState("");
+  const [depositAsset,setDepositAsset]=useState<ExAsset>("toman");
+  const [depositAmt,setDepositAmt]=useState("");
+  const [chartKey,setChartKey]=useState(0);
+  const [orderMsg,setOrderMsg]=useState("");
+
+  // Bot: update prices every 3s
+  useEffect(()=>{
+    const iv=setInterval(()=>{
+      setPrices(prev=>{
+        const next={...prev};
+        Object.keys(next).forEach(pair=>{const d=(Math.random()-0.5)*0.008;next[pair]=next[pair]*(1+d)});
+        return next;
+      });
+      setChanges(prev=>{
+        const next={...prev};
+        EX_PAIRS.forEach(p=>{next[p]=(Math.random()-0.48)*4});
+        return next;
+      });
+    },3000);
+    return()=>clearInterval(iv);
+  },[]);
+
+  // Bot: add random orders every 6s
+  useEffect(()=>{
+    const iv=setInterval(()=>{
+      const pair=EX_PAIRS[Math.floor(Math.random()*20)];
+      const p=prices[pair]||1;const variance=(Math.random()-0.5)*0.01;
+      const botOrder:ExOrder={id:"B"+genId(),pair,side:Math.random()>0.5?"buy":"sell",price:p*(1+variance),amount:parseFloat((Math.random()*0.5).toFixed(4)),total:0,status:"filled",createdAt:new Date().toISOString()};
+      botOrder.total=botOrder.price*botOrder.amount;
+      setOrders(prev=>{const next=[botOrder,...prev].slice(0,100);DB.saveExOrders(next);return next});
+    },6000);
+    return()=>clearInterval(iv);
+  },[prices]);
+
+  const [base,quote]=selectedPair.split("/");
+  const curPrice=prices[selectedPair]||0;
+  const tvSymbol=TV_SYMBOLS[selectedPair]||"BINANCE:BTCUSDT";
+
+  const filteredPairs=EX_PAIRS.filter(p=>p.toLowerCase().includes(pairSearch.toLowerCase()));
+
+  const placeOrder=()=>{
+    const p=parseFloat(price)||curPrice;const q=parseFloat(qty)||0;
+    if(q<=0){setOrderMsg("مقدار معتبر وارد کنید.");return}
+    const total=p*q;
+    if(side==="buy"){const needed=quote==="TOMAN"?total:total;const asset=(quote==="TOMAN"?"toman":"USDT") as ExAsset;if((exWallet[asset]||0)<needed){setOrderMsg("موجودی کیف صرافی کافی نیست.");return}}
+    if(side==="sell"){const asset=base as ExAsset;if((exWallet[asset]||0)<q){setOrderMsg("موجودی کیف صرافی کافی نیست.");return}}
+    const newOrder:ExOrder={id:"U"+genId(),pair:selectedPair,side,price:p,amount:q,total,status:"filled",createdAt:new Date().toISOString()};
+    const newW={...exWallet};
+    if(side==="buy"){newW[(quote==="TOMAN"?"toman":"USDT") as ExAsset]=(newW[(quote==="TOMAN"?"toman":"USDT") as ExAsset]||0)-total;newW[base as ExAsset]=(newW[base as ExAsset]||0)+q}
+    else{newW[base as ExAsset]=(newW[base as ExAsset]||0)-q;newW[(quote==="TOMAN"?"toman":"USDT") as ExAsset]=(newW[(quote==="TOMAN"?"toman":"USDT") as ExAsset]||0)+total}
+    DB.saveExWallet(newW);setExWallet(newW);
+    const next=[newOrder,...orders].slice(0,100);DB.saveExOrders(next);setOrders(next);
+    setOrderMsg("سفارش با موفقیت ثبت شد.");setQty("");setPrice("");
+    setTimeout(()=>setOrderMsg(""),2000);
+  };
+
+  const deposit=()=>{
+    const amt=parseFloat(depositAmt)||0;if(amt<=0){alert("مبلغ معتبر وارد کنید.");return}
+    if(depositAsset==="toman"&&amt>user.tomanBalance){alert("موجودی تومانی کافی نیست.");return}
+    if(depositAsset==="USDT"&&amt>user.usdtBalance){alert("موجودی USDT کافی نیست.");return}
+    const newW={...exWallet};newW[depositAsset]=(newW[depositAsset]||0)+amt;
+    DB.saveExWallet(newW);setExWallet(newW);setDepositAmt("");
+    alert("واریز به کیف صرافی انجام شد.");
+  };
+
+  // Build mock order book
+  const bookBids=Array.from({length:8},(_,i)=>({price:curPrice*(1-0.001*(i+1)),qty:parseFloat((Math.random()*2).toFixed(4))}));
+  const bookAsks=Array.from({length:8},(_,i)=>({price:curPrice*(1+0.001*(i+1)),qty:parseFloat((Math.random()*2).toFixed(4))}));
+
+  const myOrders=orders.filter(o=>!o.id.startsWith("B"));
+  const allFilled=orders.filter(o=>o.status==="filled").slice(0,30);
+
+  return <div className="subscreen" dir="rtl">
+    <div className="subscreen-header">
+      <button className="back-btn" onClick={onBack}><Icon name="arrow" size={20}/></button>
+      <h2 className="subscreen-title">صرافی آن‌پرداز</h2>
+      <div style={{fontSize:11,color:"#00c896",fontWeight:700}}>LIVE</div>
+    </div>
+
+    {/* Exchange tabs */}
+    <div className="ex-tabs">
+      {(["market","trade","orders","wallet"] as const).map(t=><button key={t} className={`ex-tab ${tab===t?"active":""}`} onClick={()=>setTab(t)}>
+        {t==="market"?"بازار":t==="trade"?"معامله":t==="orders"?"سفارشات":"کیف پول"}
+      </button>)}
+    </div>
+
+    <div className="subscreen-body ex-body">
+
+      {/* Market tab */}
+      {tab==="market"&&<div>
+        <div className="auth-input-wrap" style={{marginBottom:12}}>
+          <Icon name="search" size={16}/><input className="auth-input" value={pairSearch} onChange={e=>setPairSearch(e.target.value)} placeholder="جستجوی جفت ارز..." style={{marginRight:8}}/>
+        </div>
+        <div className="pair-list">
+          {filteredPairs.map(pair=>{const chg=changes[pair]||0;const p=prices[pair]||INITIAL_PRICES[pair]||0;return(
+            <button key={pair} className={`pair-row ${selectedPair===pair?"active":""}`} onClick={()=>{setSelectedPair(pair);setTab("trade");setChartKey(k=>k+1)}}>
+              <div className="pair-name">{pair.split("/")[0]}<small>/{pair.split("/")[1]}</small></div>
+              <div style={{flex:1}}/>
+              <div style={{textAlign:"left"}}>
+                <div style={{fontSize:13,fontWeight:700,color:"#f0f0f0",direction:"ltr"}}>{fmtPrice(p)}</div>
+                <div style={{fontSize:11,color:chg>=0?"#00c896":"#e85c5c"}}>{chg>=0?"+":""}{chg.toFixed(2)}%</div>
+              </div>
+            </button>
+          )})}
+        </div>
+      </div>}
+
+      {/* Trade tab */}
+      {tab==="trade"&&<div>
+        {/* Pair header */}
+        <div className="trade-header">
+          <div>
+            <div style={{fontSize:16,fontWeight:800,color:"#f0f0f0"}}>{selectedPair}</div>
+            <div style={{fontSize:22,fontWeight:900,color:(changes[selectedPair]||0)>=0?"#00c896":"#e85c5c",direction:"ltr"}}>{fmtPrice(curPrice)}</div>
+            <div style={{fontSize:11,color:(changes[selectedPair]||0)>=0?"#00c896":"#e85c5c"}}>{(changes[selectedPair]||0)>=0?"▲":"▼"} {Math.abs(changes[selectedPair]||0).toFixed(2)}% ۲۴ ساعته</div>
+          </div>
+          <button style={{background:"#1a1a1a",border:"1px solid #2e2e2e",borderRadius:10,padding:"6px 12px",color:"#888",fontSize:12,cursor:"pointer",fontFamily:"Vazirmatn"}} onClick={()=>setTab("market")}>تغییر جفت ارز</button>
+        </div>
+
+        {/* TradingView chart */}
+        <div style={{borderRadius:14,overflow:"hidden",marginBottom:12,background:"#111"}}>
+          <iframe
+            key={`${selectedPair}-${chartKey}`}
+            src={`https://s.tradingview.com/widgetembed/?symbol=${tvSymbol}&interval=60&theme=dark&style=1&locale=en&toolbar_bg=%230f0f0f&enable_publishing=false&save_image=false&hideideas=1&hide_top_toolbar=0`}
+            width="100%"
+            height="260"
+            frameBorder="0"
+            scrolling="no"
+            style={{border:0,display:"block"}}
+            title="TradingView Chart"
+          />
+        </div>
+
+        {/* Order book mini */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:12}}>
+          <div style={{background:"#1a1a1a",borderRadius:12,padding:10}}>
+            <div style={{fontSize:11,color:"#00c896",fontWeight:700,marginBottom:6}}>خرید</div>
+            {bookBids.slice(0,5).map((b,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#aaa",padding:"2px 0"}}>
+              <span style={{color:"#00c896",direction:"ltr"}}>{fmtPrice(b.price)}</span><span>{b.qty.toFixed(4)}</span>
+            </div>)}
+          </div>
+          <div style={{background:"#1a1a1a",borderRadius:12,padding:10}}>
+            <div style={{fontSize:11,color:"#e85c5c",fontWeight:700,marginBottom:6}}>فروش</div>
+            {bookAsks.slice(0,5).map((a,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#aaa",padding:"2px 0"}}>
+              <span style={{color:"#e85c5c",direction:"ltr"}}>{fmtPrice(a.price)}</span><span>{a.qty.toFixed(4)}</span>
+            </div>)}
+          </div>
+        </div>
+
+        {/* Buy/Sell form */}
+        <div className="trade-form">
+          <div style={{display:"flex",gap:6,marginBottom:12}}>
+            <button className={`side-btn buy ${side==="buy"?"active":""}`} onClick={()=>setSide("buy")}>خرید</button>
+            <button className={`side-btn sell ${side==="sell"?"active":""}`} onClick={()=>setSide("sell")}>فروش</button>
+          </div>
+          <label className="field-label">قیمت ({quote})</label>
+          <div className="auth-input-wrap" style={{marginBottom:8}}>
+            <input className="auth-input ltr" value={price} onChange={e=>setPrice(e.target.value.replace(/[^0-9.]/g,""))} placeholder={fmtPrice(curPrice)} inputMode="decimal" dir="ltr"/>
+            <button style={{background:"none",border:"none",color:"#00c896",fontSize:11,cursor:"pointer",fontFamily:"Vazirmatn",flexShrink:0}} onClick={()=>setPrice(curPrice.toFixed(6))}>بازار</button>
+          </div>
+          <label className="field-label">مقدار ({base})</label>
+          <div className="auth-input-wrap" style={{marginBottom:8}}>
+            <input className="auth-input ltr" value={qty} onChange={e=>setQty(e.target.value.replace(/[^0-9.]/g,""))} placeholder="0" inputMode="decimal" dir="ltr"/>
+          </div>
+          <div style={{display:"flex",gap:6,marginBottom:12}}>
+            {[25,50,75,100].map(pct=><button key={pct} style={{flex:1,padding:"6px 0",background:"#1a1a1a",border:"1px solid #2e2e2e",borderRadius:8,color:"#888",fontSize:11,cursor:"pointer",fontFamily:"Vazirmatn"}} onClick={()=>{const bal=side==="buy"?(exWallet[quote==="TOMAN"?"toman":"USDT" as ExAsset]||0):(exWallet[base as ExAsset]||0);const p=parseFloat(price)||curPrice;if(side==="buy")setQty(((bal*pct/100)/p).toFixed(6));else setQty((bal*pct/100).toFixed(6))}}>{pct}%</button>)}
+          </div>
+          {orderMsg&&<div style={{fontSize:12,color:orderMsg.includes("موفق")?"#00c896":"#e85c5c",marginBottom:8,textAlign:"center"}}>{orderMsg}</div>}
+          <button className={`primary-button ${side==="sell"?"cta":""}`} onClick={placeOrder}>{side==="buy"?`خرید ${base}`:`فروش ${base}`}</button>
+        </div>
+      </div>}
+
+      {/* Orders tab */}
+      {tab==="orders"&&<div>
+        <div style={{fontSize:14,fontWeight:700,color:"#f0f0f0",marginBottom:12}}>سفارشات من</div>
+        {myOrders.length===0?<p style={{color:"#555",textAlign:"center",padding:"30px 0"}}>سفارشی وجود ندارد.</p>:myOrders.map(o=><div key={o.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"#1a1a1a",borderRadius:12,padding:"12px 14px",marginBottom:8}}>
+          <div><div style={{fontSize:12,fontWeight:700,color:o.side==="buy"?"#00c896":"#e85c5c"}}>{o.side==="buy"?"خرید":"فروش"} {o.pair}</div><div style={{fontSize:10,color:"#666"}}>{new Date(o.createdAt).toLocaleTimeString("fa-IR")}</div></div>
+          <div style={{textAlign:"left"}}><div style={{fontSize:12,fontWeight:700,color:"#f0f0f0",direction:"ltr"}}>{fmtPrice(o.price)}</div><div style={{fontSize:10,color:"#888"}}>{o.amount.toFixed(4)} {o.pair.split("/")[0]}</div></div>
+        </div>)}
+
+        <div style={{fontSize:14,fontWeight:700,color:"#f0f0f0",margin:"20px 0 12px"}}>معاملات اخیر</div>
+        <div style={{background:"#1a1a1a",borderRadius:12,overflow:"hidden"}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",padding:"8px 12px",borderBottom:"1px solid #252525"}}>
+            <span style={{fontSize:11,color:"#555"}}>جفت ارز</span><span style={{fontSize:11,color:"#555",textAlign:"center"}}>قیمت</span><span style={{fontSize:11,color:"#555",textAlign:"left"}}>مقدار</span>
+          </div>
+          {allFilled.slice(0,15).map(o=><div key={o.id} style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",padding:"8px 12px",borderBottom:"1px solid #1e1e1e"}}>
+            <span style={{fontSize:11,color:o.side==="buy"?"#00c896":"#e85c5c"}}>{o.pair.split("/")[0]}</span>
+            <span style={{fontSize:11,color:"#aaa",textAlign:"center",direction:"ltr"}}>{fmtPrice(o.price)}</span>
+            <span style={{fontSize:11,color:"#888",textAlign:"left"}}>{o.amount.toFixed(4)}</span>
+          </div>)}
+        </div>
+      </div>}
+
+      {/* Wallet tab */}
+      {tab==="wallet"&&<div>
+        <div style={{fontSize:14,fontWeight:700,color:"#f0f0f0",marginBottom:4}}>کیف پول صرافی</div>
+        <div style={{fontSize:11,color:"#666",marginBottom:16}}>این کیف پول مجزا از کیف پول اصلی شماست.</div>
+        {(Object.entries(exWallet) as [ExAsset,number][]).map(([asset,bal])=><div key={asset} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"#1a1a1a",borderRadius:12,padding:"12px 14px",marginBottom:8}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <div style={{width:36,height:36,borderRadius:10,background:asset==="toman"?"rgba(0,200,150,0.15)":asset==="USDT"?"rgba(38,161,123,0.15)":"rgba(247,147,26,0.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:900,color:asset==="toman"?"#00c896":asset==="USDT"?"#26a17b":"#f7931a"}}>
+              {asset==="toman"?"﷼":asset==="USDT"?"₮":asset.charAt(0)}
+            </div>
+            <div><div style={{fontSize:13,fontWeight:700,color:"#f0f0f0"}}>{asset==="toman"?"تومان":asset}</div></div>
+          </div>
+          <div style={{textAlign:"left"}}><div style={{fontSize:14,fontWeight:800,color:"#f0f0f0",direction:"ltr"}}>{asset==="toman"?fa(bal):bal.toFixed(asset==="USDT"?4:6)}</div></div>
+        </div>)}
+
+        <div style={{background:"#1a1a1a",borderRadius:16,padding:16,marginTop:8}}>
+          <div style={{fontSize:14,fontWeight:700,color:"#f0f0f0",marginBottom:12}}>واریز به کیف صرافی</div>
+          <select value={depositAsset} onChange={e=>setDepositAsset(e.target.value as ExAsset)} style={{width:"100%",background:"#111",border:"1px solid #2e2e2e",borderRadius:10,padding:"10px 12px",color:"#f0f0f0",fontFamily:"Vazirmatn",fontSize:13,marginBottom:10,outline:"none"}}>
+            <option value="toman">تومان (موجودی: {fa(user.tomanBalance)})</option>
+            <option value="USDT">USDT (موجودی: {faFixed(user.usdtBalance,4)})</option>
+            <option value="BTC">BTC</option><option value="ETH">ETH</option>
+            <option value="BNB">BNB</option><option value="SOL">SOL</option>
+          </select>
+          <div className="auth-input-wrap" style={{marginBottom:10}}>
+            <input className="auth-input ltr" value={depositAmt} onChange={e=>setDepositAmt(e.target.value.replace(/[^0-9.]/g,""))} placeholder="مقدار" inputMode="decimal" dir="ltr"/>
+          </div>
+          <button className="primary-button" onClick={deposit}>واریز</button>
+        </div>
+      </div>}
+    </div>
+  </div>;
+}
+
+// ─── Modals ───────────────────────────────────────────────────────────────────
+function AssetModal({user,rate,onClose}:{user:UserData;rate:number;onClose:()=>void}){
+  const total=user.tomanBalance+user.usdtBalance*rate;
+  return <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-card" onClick={e=>e.stopPropagation()}>
+      <div className="modal-handle"/>
+      <h3>جزئیات دارایی</h3>
+      <div className="asset-detail-row"><div className="asset-detail-icon toman">﷼</div><div><p>تومان ایران</p><strong>{fa(user.tomanBalance)} <small>تومان</small></strong></div></div>
+      <div className="asset-detail-row"><div className="asset-detail-icon usdt">₮</div><div><p>تتر (USDT)</p><strong>{faFixed(user.usdtBalance)} <small>USDT</small></strong><br/><small style={{color:"#888"}}>≈ {fa(Math.round(user.usdtBalance*rate))} تومان</small></div></div>
+      <div className="asset-total-row"><span>ارزش کل دارایی</span><b>{fa(Math.round(total))} تومان</b></div>
+      <button className="primary-button" onClick={onClose}>بستن</button>
+    </div>
+  </div>;
+}
+
+function TxModal({tx,onClose}:{tx:TxRecord;onClose:()=>void}){
+  const typeLabel:Record<string,string>={swap:"تبدیل",transfer:"انتقال",deposit:"واریز",withdraw:"برداشت"};
+  const statusLabel:Record<string,string>={done:"انجام‌شده",pending:"در انتظار بررسی",failed:"ناموفق"};
+  const dt=new Date(tx.createdAt);
+  const timeStr=dt.toLocaleDateString("fa-IR")+" · "+dt.toLocaleTimeString("fa-IR",{hour:"2-digit",minute:"2-digit"});
+  return <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-card" onClick={e=>e.stopPropagation()}>
+      <div className="modal-handle"/>
+      <h3>{typeLabel[tx.type]??tx.type}</h3>
+      <p style={{textAlign:"center",fontSize:13,color:tx.status==="done"?"#00c896":tx.status==="failed"?"#e85c5c":"#f5c23d",marginBottom:16}}>{statusLabel[tx.status]}</p>
+      {([["شناسه",tx.id],["زمان",timeStr],["مبلغ",`${fa(tx.amount)} ${tx.fromAsset==="toman"?"تومان":"USDT"}`],tx.convertedAmount!=null?["معادل",`${tx.toAsset==="usdt"?tx.convertedAmount.toFixed(6):fa(Math.round(tx.convertedAmount))} ${tx.toAsset==="toman"?"تومان":"USDT"}`]:null,tx.fee>0?["کارمزد",`${tx.fee} USDT`]:null,tx.toAddress?["مقصد",tx.toAddress]:null] as ([string,string]|null)[]).filter((x):x is [string,string]=>x!==null).map(([k,v],i)=><div key={i} className="modal-detail"><span>{k}</span><b dir="ltr">{v}</b></div>)}
+      <button className="primary-button" onClick={onClose}>بستن</button>
+    </div>
+  </div>;
+}
+
+function SupportModal({onClose}:{onClose:()=>void}){
+  return <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-card" onClick={e=>e.stopPropagation()}>
+      <div className="modal-handle"/><h3>پشتیبانی</h3>
+      <p style={{fontSize:13,color:"#888",marginBottom:16,textAlign:"center"}}>برای راهنمایی با شماره‌های زیر تماس بگیرید.</p>
+      <a href="tel:09375437106" style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,background:"rgba(0,200,150,0.1)",border:"1px solid rgba(0,200,150,0.25)",borderRadius:14,padding:"14px",color:"#00c896",textDecoration:"none",marginBottom:10,fontWeight:700,direction:"ltr"}}><Icon name="phone" size={20}/>۰۹۳۷۵۴۳۷۱۰۶</a>
+      <a href="tel:09051826963" style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,background:"rgba(0,200,150,0.1)",border:"1px solid rgba(0,200,150,0.25)",borderRadius:14,padding:"14px",color:"#00c896",textDecoration:"none",marginBottom:16,fontWeight:700,direction:"ltr"}}><Icon name="phone" size={20}/>۰۹۰۵۱۸۲۶۹۶۳</a>
+      <button className="outline-button" style={{width:"100%"}} onClick={onClose}>بستن</button>
+    </div>
+  </div>;
+}
+
+function AddCardModal({onAdd,onClose}:{onAdd:(c:BankCard)=>void;onClose:()=>void}){
+  const [num,setNum]=useState("");const [bank,setBank]=useState("");const [holder,setHolder]=useState("");const [err,setErr]=useState("");
+  const fmt=(v:string)=>v.replace(/\D/g,"").slice(0,16).replace(/(.{4})/g,"$1 ").trim();
+  const save=()=>{if(num.replace(/\s/g,"").length!==16){setErr("شماره کارت باید ۱۶ رقم باشد.");return}if(!bank||!holder){setErr("تمام فیلدها الزامی است.");return}onAdd({id:genId(),number:num.replace(/\s/g,""),bank,holderName:holder})};
+  return <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-card" onClick={e=>e.stopPropagation()}>
+      <div className="modal-handle"/><h3>افزودن کارت بانکی</h3>
+      <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:16}}>
+        <label style={{fontSize:13,color:"#aaa"}}>شماره کارت<div className="auth-input-wrap" style={{marginTop:4}}><input className="auth-input ltr" value={fmt(num)} onChange={e=>setNum(e.target.value.replace(/\s/g,""))} inputMode="numeric" placeholder="xxxx xxxx xxxx xxxx" dir="ltr"/></div></label>
+        <label style={{fontSize:13,color:"#aaa"}}>نام بانک<div className="auth-input-wrap" style={{marginTop:4}}><input className="auth-input" value={bank} onChange={e=>setBank(e.target.value)} placeholder="مثلاً ملت"/></div></label>
+        <label style={{fontSize:13,color:"#aaa"}}>نام صاحب کارت<div className="auth-input-wrap" style={{marginTop:4}}><input className="auth-input" value={holder} onChange={e=>setHolder(e.target.value)}/></div></label>
+      </div>
+      {err&&<p className="field-err">{err}</p>}
+      <button className="primary-button" onClick={save}>ذخیره کارت</button>
+      <button className="outline-button" style={{width:"100%",marginTop:8}} onClick={onClose}>انصراف</button>
+    </div>
+  </div>;
+}
+
+// ─── Profile Page ────────────────────────────────────────────────────────────
+function ProfilePage({user,onUpdate,onLogout,lightTheme,setLightTheme}:{user:UserData;onUpdate:(u:UserData)=>void;onLogout:()=>void;lightTheme:boolean;setLightTheme:(v:boolean)=>void}){
+  const [modal,setModal]=useState<null|"info"|"addcard"|"addcard-form"|"support"|"settings">(null);
+  const initials=(user.name?.[0]??"")+(user.family?.[0]??"")||"؟";
+  return <>
+    <div style={{flex:1,overflowY:"auto",padding:16}}>
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"20px 0 24px"}}>
+        <div style={{width:80,height:80,borderRadius:"50%",background:"linear-gradient(135deg,#00c896,#007a5e)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:900,fontSize:24,overflow:"hidden",marginBottom:12}}>
+          {user.photo?<img src={user.photo} alt="پروفایل" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:initials}
+        </div>
+        <div style={{fontSize:18,fontWeight:800,color:"#f0f0f0"}}>{(user.name+" "+user.family).trim()||"کاربر"}</div>
+        <div style={{fontSize:12,color:"#00c896",display:"flex",alignItems:"center",gap:4,marginTop:4}}><Icon name="check" size={12}/>احراز هویت شده</div>
+      </div>
+      <div style={{background:"#1a1a1a",borderRadius:18,border:"1px solid #252525"}}>
+        {[{icon:"user",label:"اطلاعات شخصی",action:"info"},{icon:"credit",label:"کارت‌های بانکی",action:"addcard"},{icon:"settings",label:"تنظیمات",action:"settings"},{icon:"phone",label:"پشتیبانی",action:"support"}].map((item,i)=><button key={item.label} style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"16px 18px",background:"none",border:"none",cursor:"pointer",color:"#f0f0f0",fontFamily:"Vazirmatn",fontSize:15,borderBottom:i<3?"1px solid #252525":"none"}} onClick={()=>setModal(item.action as any)}>
+          <div style={{display:"flex",alignItems:"center",gap:12}}><Icon name={item.icon} size={18}/>{item.label}</div>
+          <Icon name="arrow-left" size={16}/>
+        </button>)}
+        <button style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"16px 18px",background:"none",border:"none",cursor:"pointer",color:"#e85c5c",fontFamily:"Vazirmatn",fontSize:15}} onClick={onLogout}>
+          <div style={{display:"flex",alignItems:"center",gap:12}}><Icon name="log-out" size={18}/>خروج از حساب</div>
+        </button>
+      </div>
+    </div>
+    {modal==="info"&&<div className="modal-overlay" onClick={()=>setModal(null)}><div className="modal-card" onClick={e=>e.stopPropagation()}><div className="modal-handle"/><h3>اطلاعات شخصی</h3>{[["نام",user.name||"—"],["نام خانوادگی",user.family||"—"],["کد ملی",user.nationalId||"—"],["تاریخ تولد",user.birthDate||"—"],["موبایل",user.phone],["عضویت",user.registeredAt?new Date(user.registeredAt).toLocaleDateString("fa-IR"):"—"]].map(([k,v])=><div key={k} className="modal-detail"><span>{k}</span><b dir="ltr">{v}</b></div>)}<button className="primary-button" onClick={()=>setModal(null)}>بستن</button></div></div>}
+    {modal==="addcard"&&<div className="modal-overlay" onClick={()=>setModal(null)}><div className="modal-card" onClick={e=>e.stopPropagation()}><div className="modal-handle"/><h3>کارت‌های بانکی</h3>{user.cards.length===0&&<p style={{textAlign:"center",color:"#555",padding:"20px 0"}}>کارتی ثبت نشده است.</p>}{user.cards.map(c=><div key={c.id} style={{display:"flex",alignItems:"center",gap:12,background:"#1a1a1a",borderRadius:12,padding:"12px 14px",marginBottom:8}}><Icon name="credit" size={18}/><div><div style={{fontWeight:700,direction:"ltr",fontSize:13}}>{c.number.replace(/(.{4})/g,"$1 ").trim()}</div><div style={{fontSize:11,color:"#888"}}>{c.bank} · {c.holderName}</div></div></div>)}<button className="outline-button" style={{width:"100%",marginBottom:8}} onClick={()=>setModal("addcard-form")}>+ افزودن کارت</button><button className="primary-button" onClick={()=>setModal(null)}>بستن</button></div></div>}
+    {modal==="addcard-form"&&<AddCardModal onAdd={c=>{const u={...user,cards:[...user.cards,c]};onUpdate(u);setModal(null)}} onClose={()=>setModal(null)}/>}
+    {modal==="support"&&<SupportModal onClose={()=>setModal(null)}/>}
+    {modal==="settings"&&<div className="modal-overlay" onClick={()=>setModal(null)}><div className="modal-card" onClick={e=>e.stopPropagation()}><div className="modal-handle"/><h3>تنظیمات</h3>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 0",borderBottom:"1px solid #1e1e1e"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <div style={{width:36,height:36,borderRadius:10,background:"rgba(245,194,61,0.15)",display:"flex",alignItems:"center",justifyContent:"center",color:"#f5c23d"}}><Icon name="eye" size={16}/></div>
+          <div><div style={{fontSize:14,fontWeight:700,color:"#f0f0f0"}}>تم روشن</div><div style={{fontSize:11,color:"#888"}}>تغییر به حالت روشن</div></div>
+        </div>
+        <button onClick={()=>setLightTheme(!lightTheme)} style={{background:"none",border:"none",cursor:"pointer"}}>
+          <div style={{width:48,height:26,borderRadius:13,background:lightTheme?"#00c896":"#2a2a2a",position:"relative",transition:"background 0.2s"}}>
+            <div style={{position:"absolute",top:3,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"all 0.2s",left:lightTheme?25:3}}/>
+          </div>
+        </button>
+      </div>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 0"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <div style={{width:36,height:36,borderRadius:10,background:"rgba(74,158,255,0.15)",display:"flex",alignItems:"center",justifyContent:"center",color:"#4a9eff"}}><Icon name="bell" size={16}/></div>
+          <div><div style={{fontSize:14,fontWeight:700,color:"#f0f0f0"}}>اعلان‌ها</div><div style={{fontSize:11,color:"#888"}}>دریافت اعلانات مهم</div></div>
+        </div>
+        <div style={{width:48,height:26,borderRadius:13,background:"#00c896",position:"relative"}}><div style={{position:"absolute",top:3,right:3,width:20,height:20,borderRadius:"50%",background:"#fff"}}/></div>
+      </div>
+      <button className="primary-button" onClick={()=>setModal(null)}>بستن</button>
+    </div></div>}
+  </>;
+}
+
+// ─── History Page ────────────────────────────────────────────────────────────
+function HistoryPage({transactions,onBack}:{transactions:TxRecord[];onBack:()=>void}){
+  const [filter,setFilter]=useState("همه");const [selected,setSelected]=useState<TxRecord|null>(null);
+  const filters=["همه","تبدیل","انتقال","واریز"];const typeMap:Record<string,string>={تبدیل:"swap",انتقال:"transfer",واریز:"deposit"};
+  const filtered=filter==="همه"?transactions:transactions.filter(t=>t.type===typeMap[filter]);
+  const typeLabel:Record<string,string>={swap:"تبدیل دارایی",transfer:"انتقال",deposit:"واریز",withdraw:"برداشت"};
+  const iconMap:Record<string,string>={swap:"swap",transfer:"send",deposit:"plus",withdraw:"send"};
+  const colorMap:Record<string,string>={swap:"#4a9eff",transfer:"#f5a623",deposit:"#00c896",withdraw:"#e85c5c"};
+  return <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+    <div style={{padding:"14px 16px 8px",flexShrink:0}}>
+      <div style={{fontSize:18,fontWeight:800,color:"#f0f0f0",marginBottom:4}}>تراکنش‌های شما</div>
+      <div style={{fontSize:12,color:"#666"}}>پیگیری آسان تمام فعالیت‌ها</div>
+    </div>
+    <div style={{display:"flex",gap:6,padding:"0 16px 12px",flexShrink:0}}>
+      {filters.map(f=><button key={f} onClick={()=>setFilter(f)} style={{padding:"8px 14px",borderRadius:10,background:filter===f?"#00c896":"#1a1a1a",color:filter===f?"#000":"#888",border:`1px solid ${filter===f?"#00c896":"#2e2e2e"}`,cursor:"pointer",fontSize:13,fontWeight:filter===f?700:400,fontFamily:"Vazirmatn"}}>{f}</button>)}
+    </div>
+    <div style={{flex:1,overflowY:"auto",padding:"0 16px"}}>
+      {filtered.length===0?<p style={{textAlign:"center",color:"#555",padding:"40px 0"}}>تراکنشی یافت نشد.</p>:filtered.map(tx=>{
+        const dt=new Date(tx.createdAt);
+        return <div key={tx.id} style={{display:"flex",alignItems:"center",gap:12,background:"#1a1a1a",borderRadius:14,padding:"12px 14px",marginBottom:8,cursor:"pointer"}} onClick={()=>setSelected(tx)}>
+          <div style={{width:42,height:42,borderRadius:12,background:`${colorMap[tx.type]||"#4a9eff"}20`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:colorMap[tx.type]||"#4a9eff"}}><Icon name={tx.status==="pending"?"clock":(iconMap[tx.type]||"receipt")} size={20}/></div>
+          <div style={{flex:1}}><div style={{fontSize:14,fontWeight:700,color:"#f0f0f0"}}>{typeLabel[tx.type]||tx.type}</div><div style={{fontSize:11,color:"#666"}}>{dt.toLocaleDateString("fa-IR")} · {dt.toLocaleTimeString("fa-IR",{hour:"2-digit",minute:"2-digit"})}</div></div>
+          <div style={{textAlign:"left",fontWeight:700,fontSize:13,color:tx.type==="deposit"?"#00c896":tx.status==="pending"?"#f5c23d":"#f0f0f0"}}>{tx.status==="pending"?"در انتظار":`${fa(tx.amount)} ${tx.fromAsset==="toman"?"تومان":"USDT"}`}</div>
+        </div>;
+      })}
+    </div>
+    {selected&&<TxModal tx={selected} onClose={()=>setSelected(null)}/>}
+  </div>;
+}
+
+// ─── Services data ────────────────────────────────────────────────────────────
+const SERVICES=[
+  // row 1 main actions
+  {id:"deposit",label:"واریز",icon:"deposit",color:"#00c896",bg:"rgba(0,200,150,0.15)",action:"deposit"},
+  {id:"tether-swap",label:"تبدیل تتر",icon:"swap",color:"#f5c23d",bg:"rgba(245,194,61,0.15)",action:"tether-swap"},
+  {id:"transfer",label:"انتقال وجه",icon:"send",color:"#4a9eff",bg:"rgba(74,158,255,0.15)",action:"transfer"},
+  {id:"exchange",label:"صرافی",icon:"trending-up",color:"#a78bfa",bg:"rgba(167,139,250,0.15)",action:"exchange"},
+  // row 2 utility
+  {id:"charge",label:"شارژ",icon:"phone",color:"#34d399",bg:"rgba(52,211,153,0.15)",action:"charge"},
+  {id:"internet",label:"بسته اینترنت",icon:"wifi",color:"#38bdf8",bg:"rgba(56,189,248,0.15)",action:"internet"},
+  {id:"bills",label:"قبض",icon:"receipt",color:"#fb923c",bg:"rgba(251,146,60,0.15)",action:"bills"},
+  {id:"charity",label:"نیکوکاری",icon:"shield-check",color:"#f472b6",bg:"rgba(244,114,182,0.15)",action:"charity"},
+  // row 3 insurance
+  {id:"third-party-ins",label:"بیمه ثالث",icon:"shield",color:"#3b82f6",bg:"rgba(59,130,246,0.15)",action:"insurance"},
+  {id:"body-ins",label:"بیمه بدنه",icon:"car",color:"#6366f1",bg:"rgba(99,102,241,0.15)",action:"insurance-body"},
+  {id:"moto-ins",label:"بیمه موتورسیکلت",icon:"shield-check",color:"#4a9eff",bg:"rgba(74,158,255,0.12)",action:"insurance-moto"},
+  {id:"car-services",label:"خدمات خودرو",icon:"car",color:"#a855f7",bg:"rgba(168,85,247,0.15)",action:"car-services"},
+  // row 4 vehicle/traffic
+  {id:"violations",label:"خلافی خودرو",icon:"info",color:"#a855f7",bg:"rgba(168,85,247,0.12)",action:"violations"},
+  {id:"freeway",label:"عوارض آزادراه",icon:"building",color:"#a855f7",bg:"rgba(168,85,247,0.1)",action:"freeway"},
+  {id:"tehran-traffic",label:"طرح ترافیک",icon:"camera",color:"#9333ea",bg:"rgba(147,51,234,0.15)",action:"tehran-traffic"},
+  {id:"sana",label:"ثبت ثنا",icon:"user",color:"#64748b",bg:"rgba(100,116,139,0.15)",action:"sana"},
+  // row 5 judiciary
+  {id:"judiciary-bill",label:"قبض قضائیه",icon:"gavel",color:"#64748b",bg:"rgba(100,116,139,0.12)",action:"judiciary-bill"},
+  {id:"property-reg",label:"قبض ثبت اسناد",icon:"file-text",color:"#64748b",bg:"rgba(100,116,139,0.1)",action:"property-reg"},
+];
+
+// ─── Main App ─────────────────────────────────────────────────────────────────
+export default function App() {
+  const [appState,setAppState]=useState<AppState>("splash");
+  const [pendingPhone,setPendingPhone]=useState("");const [pendingCode,setPendingCode]=useState("");const [pendingDevCode,setPendingDevCode]=useState<string|undefined>();
+  const [user,setUser]=useState<UserData|null>(null);
+  const [tab,setTab]=useState<MainTab>("home");
+  const [subPage,setSubPage]=useState<SubPage>(null);
+  const [rate,setRate]=useState(FALLBACK_RATE);const [rateLoading,setRateLoading]=useState(true);
+  const [showBal,setShowBal]=useState(true);
+  const [assetModal,setAssetModal]=useState(false);
+  const [transactions,setTransactions]=useState<TxRecord[]>([]);
+  const [selectedTx,setSelectedTx]=useState<TxRecord|null>(null);
+  const [menuOpen,setMenuOpen]=useState(false);
+  const [serviceName,setServiceName]=useState("");
+  const [lightTheme,setLightTheme]=useState(()=>localStorage.getItem("anp_theme")==="light");
+  const [insuranceTab,setInsuranceTab]=useState<"third-party"|"body"|"motorcycle">("third-party");
+  const menuRef=useRef<HTMLDivElement>(null);
+
+  useEffect(()=>{localStorage.setItem("anp_theme",lightTheme?"light":"dark")},[lightTheme]);
+
+  useEffect(()=>{const t=setTimeout(()=>{const phone=DB.currentPhone();if(phone){const u=DB.getUser(phone);if(u){setUser(u);setTransactions(DB.getTx(phone));setAppState("ready");return}}setAppState("login")},2200);return()=>clearTimeout(t)},[]);
+  useEffect(()=>{fetchUSDTRate().then(r=>{setRate(r);setRateLoading(false)});const iv=setInterval(()=>fetchUSDTRate().then(setRate),60000);return()=>clearInterval(iv)},[]);
+  useEffect(()=>{const handler=(e:MouseEvent)=>{if(menuRef.current&&!menuRef.current.contains(e.target as Node))setMenuOpen(false)};document.addEventListener("mousedown",handler);return()=>document.removeEventListener("mousedown",handler)},[]);
+
+  const updateUser=useCallback((u:UserData)=>{DB.saveUser(u);setUser(u)},[]);
+  const updateWithTx=useCallback((u:UserData,tx:TxRecord)=>{const txs=[tx,...transactions];DB.saveUser(u);DB.saveTx(u.phone,txs);setUser(u);setTransactions(txs)},[transactions]);
+
+  const handleVerified=(phone:string)=>{DB.setCurrentPhone(phone);const existing=DB.getUser(phone);if(existing){setUser(existing);setTransactions(DB.getTx(phone));setAppState("ready")}else setAppState("onboard-photo")};
+  const handleLogout=()=>{DB.setCurrentPhone("");setUser(null);setTransactions([]);setTab("home");setSubPage(null);setAppState("login")};
+
+  const [obPhoto,setObPhoto]=useState("");
+  const [obProfile,setObProfile]=useState({name:"",family:"",nationalId:"",birthDate:""});
+
+  if(appState==="splash")return <SplashScreen/>;
+  if(appState==="login")return <PhoneLogin onSend={(p,c,d)=>{setPendingPhone(p);setPendingCode(c);setPendingDevCode(d);setAppState("otp")}}/>;
+  if(appState==="otp")return <OTPVerify phone={pendingPhone} correctCode={pendingCode} devCode={pendingDevCode} onVerified={handleVerified}/>;
+  if(appState==="onboard-photo")return <OnboardPhoto onDone={p=>{setObPhoto(p);setAppState("onboard-profile")}}/>;
+  if(appState==="onboard-profile")return <OnboardProfile onDone={d=>{setObProfile(d);setAppState("onboard-pin")}}/>;
+  if(appState==="onboard-pin")return <OnboardPin onDone={pin=>{const u:UserData={...obProfile,phone:pendingPhone,photo:obPhoto,pin,tomanBalance:0,usdtBalance:0,cards:[],registeredAt:new Date().toISOString()};DB.saveUser(u);DB.setCurrentPhone(u.phone);setUser(u);setAppState("ready")}}/>;
+  if(!user)return null;
+
+  const initials=(user.name?.[0]??"")+(user.family?.[0]??"")||"؟";
+  const recentTx=transactions.slice(0,3);
+
+  const handleService=(action:string,label:string)=>{
+    setMenuOpen(false);
+    if(action==="transfer"){setTab("home");setSubPage("transfer")}
+    else if(action==="exchange"){setTab("home");setSubPage("exchange")}
+    else if(action==="tether-swap"){setTab("home");setSubPage("tether-swap")}
+    else if(action==="charge"){setTab("home");setSubPage("charge")}
+    else if(action==="internet"){setTab("home");setSubPage("internet")}
+    else if(action==="bills"){setTab("home");setSubPage("bills")}
+    else if(action==="car-services"){setTab("home");setSubPage("car-services")}
+    else if(action==="violations"){setTab("home");setSubPage("violations")}
+    else if(action==="freeway"){setTab("home");setSubPage("freeway")}
+    else if(action==="tehran-traffic"){setTab("home");setSubPage("tehran-traffic")}
+    else if(action==="insurance"){setInsuranceTab("third-party");setTab("home");setSubPage("insurance")}
+    else if(action==="insurance-body"){setInsuranceTab("body");setTab("home");setSubPage("insurance")}
+    else if(action==="insurance-moto"){setInsuranceTab("motorcycle");setTab("home");setSubPage("insurance")}
+    else if(action==="sana"){setTab("home");setSubPage("sana")}
+    else if(action==="judiciary-bill"){setTab("home");setSubPage("judiciary-bill")}
+    else if(action==="property-reg"){setTab("home");setSubPage("property-reg")}
+    else if(action==="charity"){setTab("home");setSubPage("charity")}
+    else if(action==="deposit")alert("درگاه واریز به‌زودی فعال می‌شود.")
+    else if(action==="soon"){setServiceName(label);setTab("home");setSubPage("service")}
+  };
+
+  // Sub-pages
+  const SNAV=()=><nav className="bottom-nav">{([{id:"profile",label:"پروفایل",icon:"user"},{id:"history",label:"تراکنش‌ها",icon:"chart"},{id:"home",label:"خانه",icon:"home"}] as {id:MainTab;label:string;icon:string}[]).map(n=><button key={n.id} onClick={()=>{setSubPage(null);setTab(n.id)}} className={tab===n.id?"active":""}><Icon name={n.icon}/><span>{n.label}</span></button>)}</nav>;
+  const lt=lightTheme?" light-theme":"";
+  if(subPage==="transfer")return <div className={`app${lt}`} dir="rtl"><TransferScreen user={user} rate={rate} onUpdate={updateWithTx} onBack={()=>setSubPage(null)}/><SNAV/></div>;
+  if(subPage==="tether-swap")return <div className={`app${lt}`} dir="rtl"><TetherSwapScreen user={user} rate={rate} onUpdate={updateWithTx} onBack={()=>setSubPage(null)}/><SNAV/></div>;
+  if(subPage==="exchange")return <div className={`app${lt}`} dir="rtl"><ExchangeScreen user={user} onBack={()=>setSubPage(null)}/><SNAV/></div>;
+  if(subPage==="charge")return <div className={`app${lt}`} dir="rtl"><ChargeScreen type="charge" onBack={()=>setSubPage(null)}/><SNAV/></div>;
+  if(subPage==="internet")return <div className={`app${lt}`} dir="rtl"><ChargeScreen type="internet" onBack={()=>setSubPage(null)}/><SNAV/></div>;
+  if(subPage==="service")return <div className={`app${lt}`} dir="rtl"><ServiceScreen name={serviceName} onBack={()=>setSubPage(null)}/><SNAV/></div>;
+
+  if(subPage==="bills")return <div className={`app${lt}`} dir="rtl"><BillsScreen onBack={()=>setSubPage(null)}/><SNAV/></div>;
+  if(subPage==="car-services")return <div className={`app${lt}`} dir="rtl"><CarServicesScreen onBack={()=>setSubPage(null)}/><SNAV/></div>;
+  if(subPage==="violations")return <div className={`app${lt}`} dir="rtl"><ViolationsScreen onBack={()=>setSubPage(null)}/><SNAV/></div>;
+  if(subPage==="freeway")return <div className={`app${lt}`} dir="rtl"><FreewayScreen onBack={()=>setSubPage(null)}/><SNAV/></div>;
+  if(subPage==="tehran-traffic")return <div className={`app${lt}`} dir="rtl"><TrafficScreen onBack={()=>setSubPage(null)}/><SNAV/></div>;
+  if(subPage==="insurance")return <div className={`app${lt}`} dir="rtl"><InsuranceScreen initialTab={insuranceTab} onBack={()=>setSubPage(null)}/><SNAV/></div>;
+  if(subPage==="sana")return <div className={`app${lt}`} dir="rtl"><SanaScreen onBack={()=>setSubPage(null)}/><SNAV/></div>;
+  if(subPage==="judiciary-bill")return <div className={`app${lt}`} dir="rtl"><JudiciaryBillScreen onBack={()=>setSubPage(null)}/><SNAV/></div>;
+  if(subPage==="property-reg")return <div className={`app${lt}`} dir="rtl"><PropertyRegBillScreen onBack={()=>setSubPage(null)}/><SNAV/></div>;
+  if(subPage==="charity")return <div className={`app${lt}`} dir="rtl"><CharityScreen onBack={()=>setSubPage(null)}/><SNAV/></div>;
+
+  return <div className={`app${lightTheme?" light-theme":""}`} dir="rtl">
+
+    {/* Header */}
+    <header className="app-header">
+      <div className="brand">
+        <div className="brand-mark">آ</div>
+        <span>آن‌پرداز</span>
+      </div>
+      <div ref={menuRef} style={{position:"relative"}}>
+        <button className="hamburger-btn" onClick={()=>setMenuOpen(p=>!p)} aria-label="منو">
+          <Icon name="menu" size={22}/>
+        </button>
+        {menuOpen&&<div className="hamburger-dropdown">
+          <div style={{padding:"12px 16px 8px",borderBottom:"1px solid #1e1e1e"}}>
+            <div style={{fontSize:13,fontWeight:700,color:"#f0f0f0"}}>{(user.name+" "+user.family).trim()||"کاربر"}</div>
+            <div style={{fontSize:11,color:"#666",direction:"ltr"}}>{user.phone}</div>
+          </div>
+          {[{icon:"user",label:"اطلاعات شخصی",action:()=>{setTab("profile");setMenuOpen(false)}},{icon:"credit",label:"افزودن کارت",action:()=>{setTab("profile");setMenuOpen(false)}},{icon:"settings",label:"تنظیمات",action:()=>{setMenuOpen(false);alert("تنظیمات به‌زودی")}},{icon:"phone",label:"پشتیبانی",action:()=>{setMenuOpen(false);/* support */}},{icon:"log-out",label:"خروج",action:handleLogout,danger:true}].map(item=><button key={item.label} className={`dropdown-item ${item.danger?"danger":""}`} onClick={item.action}>
+            <Icon name={item.icon} size={17}/>{item.label}
+          </button>)}
+        </div>}
+      </div>
+    </header>
+
+    {/* Main content */}
+    <div className="app-content">
+      {tab==="home"&&<div style={{padding:"0 16px 16px"}}>
+        {/* Balance Card */}
+        <div className="balance-card">
+          <div className="balance-orb orb1"/><div className="balance-orb orb2"/>
+          <div className="balance-top-row">
+            <span style={{fontSize:12,color:"rgba(255,255,255,0.6)"}}>دارایی کل شما</span>
+            <button onClick={()=>setShowBal(b=>!b)} style={{background:"none",border:"none",cursor:"pointer",color:"rgba(255,255,255,0.6)",display:"flex",alignItems:"center"}} aria-label="نمایش/پنهان موجودی"><Icon name={showBal?"eye":"eye-off"} size={18}/></button>
+          </div>
+          <div className="balance-main">
+            <div style={{fontSize:28,fontWeight:900,color:"#fff",letterSpacing:-1}}>{showBal?fa(user.tomanBalance):"••••••••"}<span style={{fontSize:14,fontWeight:500,opacity:0.7,marginRight:4}}> تومان</span></div>
+          </div>
+          <div className="balance-inner-row">
+            <div style={{background:"rgba(0,0,0,0.25)",borderRadius:10,padding:"6px 12px",display:"flex",alignItems:"center",gap:8}}>
+              <span style={{color:"#f5c23d",fontSize:14,fontWeight:800}}>₮</span>
+              <span style={{fontSize:13,color:"#fff",fontWeight:700}}>{showBal?faFixed(user.usdtBalance,4):"••••"} USDT</span>
+            </div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.5)",display:"flex",alignItems:"center",gap:4}}>
+              {rateLoading?"...":fa(Math.round(rate))+" تومان"}
+              <span style={{width:6,height:6,borderRadius:"50%",background:"#00c896",display:"inline-block",animation:"pulse 2s infinite"}}/>
+            </div>
+          </div>
+          <div className="balance-rate-row">
+            <button style={{background:"rgba(0,200,150,0.2)",border:"1px solid rgba(0,200,150,0.3)",borderRadius:10,padding:"6px 14px",color:"#00c896",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"Vazirmatn"}} onClick={()=>setAssetModal(true)}>جزئیات دارایی</button>
+            <div style={{display:"flex",gap:8}}>
+              <button style={{width:32,height:32,borderRadius:9,background:"rgba(0,200,150,0.2)",border:"none",cursor:"pointer",color:"#00c896",display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>handleService("deposit","واریز")}><Icon name="plus" size={16}/></button>
+            </div>
+          </div>
+        </div>
+
+        {/* Services Grid */}
+        <div style={{fontSize:13,fontWeight:700,color:"#888",marginBottom:10}}>خدمات</div>
+        <div className="services-grid">
+          {SERVICES.map(s=>(
+            <button key={s.id} className="service-btn" onClick={()=>handleService(s.action,s.label)}>
+              <div className="service-icon" style={{background:s.bg,color:s.color}}>
+                <Icon name={s.icon} size={22}/>
+              </div>
+              <span className="service-label" style={{color:"#ccc"}}>{s.label}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Recent Transactions */}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,marginTop:4}}>
+          <div style={{fontSize:15,fontWeight:800,color:"#f0f0f0"}}>تراکنش‌های اخیر</div>
+          <button style={{background:"none",border:"none",color:"#00c896",fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",gap:4,fontFamily:"Vazirmatn"}} onClick={()=>setTab("history")}>همه <Icon name="arrow" size={16}/></button>
+        </div>
+        {recentTx.length===0?<p style={{color:"#555",textAlign:"center",padding:"24px 0",fontSize:13}}>هنوز تراکنشی انجام نشده است.</p>:recentTx.map(tx=>{
+          const colorMap:Record<string,string>={swap:"#4a9eff",transfer:"#f5a623",deposit:"#00c896",withdraw:"#e85c5c"};
+          const iconMap:Record<string,string>={swap:"swap",transfer:"send",deposit:"plus",withdraw:"send"};
+          const typeLabel:Record<string,string>={swap:"تبدیل دارایی",transfer:"انتقال",deposit:"واریز",withdraw:"برداشت"};
+          const dt=new Date(tx.createdAt);
+          return <div key={tx.id} style={{display:"flex",alignItems:"center",gap:12,background:"#1a1a1a",borderRadius:14,padding:"12px 14px",marginBottom:8,cursor:"pointer"}} onClick={()=>setSelectedTx(tx)}>
+            <div style={{width:42,height:42,borderRadius:12,background:`${colorMap[tx.type]||"#4a9eff"}20`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:colorMap[tx.type]||"#4a9eff"}}><Icon name={tx.status==="pending"?"clock":(iconMap[tx.type]||"receipt")} size={20}/></div>
+            <div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:"#f0f0f0"}}>{typeLabel[tx.type]||tx.type}</div><div style={{fontSize:11,color:"#666"}}>{dt.toLocaleDateString("fa-IR")}</div></div>
+            <div style={{fontWeight:700,fontSize:13,color:tx.status==="pending"?"#f5c23d":"#f0f0f0"}}>{tx.status==="pending"?"در انتظار":`${fa(tx.amount)} ${tx.fromAsset==="toman"?"تومان":"USDT"}`}</div>
+          </div>;
+        })}
+      </div>}
+
+      {tab==="history"&&<HistoryPage transactions={transactions} onBack={()=>setTab("home")}/>}
+      {tab==="profile"&&<ProfilePage user={user} onUpdate={updateUser} onLogout={handleLogout} lightTheme={lightTheme} setLightTheme={setLightTheme}/>}
+    </div>
+
+    {/* Bottom Nav - always visible */}
+    <nav className="bottom-nav">
+      {([{id:"profile",label:"پروفایل",icon:"user"},{id:"history",label:"تراکنش‌ها",icon:"chart"},{id:"home",label:"خانه",icon:"home"}] as {id:MainTab;label:string;icon:string}[]).map(n=>
+        <button key={n.id} onClick={()=>setTab(n.id)} className={tab===n.id?"active":""}>
+          <Icon name={n.icon}/><span>{n.label}</span>
+        </button>
+      )}
+    </nav>
+
+    {assetModal&&<AssetModal user={user} rate={rate} onClose={()=>setAssetModal(false)}/>}
+    {selectedTx&&<TxModal tx={selectedTx} onClose={()=>setSelectedTx(null)}/>}
+  </div>;
+}
+
+-----------------------------------------
+
+FILE: src/index.css
+-----------------------------------------
+@import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800;900&display=swap');
+@import 'tailwindcss';
+
+/* ─── Reset & Base ──────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: #050505;
+  color: #f0f0f0;
+  direction: rtl;
+  font-family: 'Vazirmatn', 'system-ui', -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  touch-action: manipulation;
+}
+
+::-webkit-scrollbar { width: 0; height: 0; }
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input[type="number"] { -moz-appearance: textfield; }
+
+button, input, select { font-family: 'Vazirmatn', sans-serif; }
+
+/* ─── App Root ──────────────────────────────────────────────────────────────── */
+.app {
+  width: 100%;
+  max-width: 430px;
+  margin: 0 auto;
+  height: 100dvh;
+  min-height: 100vh;
+  background: #0f0f0f;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ─── App Header ────────────────────────────────────────────────────────────── */
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 10px;
+  flex-shrink: 0;
+  background: #0f0f0f;
+  border-bottom: 1px solid #1a1a1a;
+  z-index: 30;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.brand-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #00c896, #007a5e);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 900;
+  font-size: 16px;
+}
+
+.brand > span {
+  font-size: 16px;
+  font-weight: 900;
+  color: #f0f0f0;
+}
+
+.hamburger-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: #1a1a1a;
+  border: 1px solid #2e2e2e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #f0f0f0;
+  transition: background 0.2s;
+}
+.hamburger-btn:hover { background: #222; }
+
+.hamburger-dropdown {
+  position: absolute;
+  top: 48px;
+  left: 0;
+  background: #141414;
+  border-radius: 18px;
+  border: 1px solid #222;
+  padding: 4px 0;
+  min-width: 200px;
+  z-index: 200;
+  animation: scaleIn 0.18s ease;
+  transform-origin: top left;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 18px;
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #f0f0f0;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background 0.15s;
+  text-align: right;
+  font-family: 'Vazirmatn', sans-serif;
+}
+.dropdown-item:hover { background: rgba(255,255,255,0.05); }
+.dropdown-item.danger { color: #e85c5c; }
+
+/* ─── App Content ───────────────────────────────────────────────────────────── */
+.app-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ─── Bottom Nav ────────────────────────────────────────────────────────────── */
+.bottom-nav {
+  flex-shrink: 0;
+  background: #111;
+  border-top: 1px solid #1e1e1e;
+  display: flex;
+  align-items: stretch;
+  padding: 0 8px;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+  z-index: 50;
+  min-height: 64px;
+}
+
+.bottom-nav button {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 8px 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #555;
+  transition: all 0.2s;
+}
+
+.bottom-nav button span {
+  font-size: 10px;
+  color: #555;
+  font-family: 'Vazirmatn', sans-serif;
+}
+
+.bottom-nav button.active { color: #00c896; }
+.bottom-nav button.active span { color: #00c896; }
+
+/* ─── Animations ────────────────────────────────────────────────────────────── */
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.88); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+@keyframes ripple {
+  0% { transform: scale(0.8); opacity: 0.6; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+@keyframes spinBtn {
+  to { transform: rotate(360deg); }
+}
+
+/* ─── Splash ────────────────────────────────────────────────────────────────── */
+.splash-screen {
+  position: fixed; inset: 0; z-index: 100;
+  background: #050505;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+}
+.splash-glow {
+  position: absolute; width: 320px; height: 320px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(0,200,150,0.1) 0%, transparent 70%);
+  pointer-events: none;
+}
+.splash-content {
+  position: relative; z-index: 10;
+  display: flex; flex-direction: column; align-items: center;
+}
+.splash-logo-wrap {
+  position: relative; width: 110px; height: 110px;
+  display: flex; align-items: center; justify-content: center;
+}
+.splash-logo-main {
+  width: 90px; height: 90px; border-radius: 28px;
+  background: linear-gradient(135deg, #00c896 0%, #007a5e 100%);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 0 60px rgba(0,200,150,0.4);
+  position: relative; z-index: 2;
+}
+.splash-logo-main span { color: white; font-size: 42px; font-weight: 900; line-height: 1; }
+.splash-logo-ring {
+  position: absolute; border-radius: 50%; border: 2px solid rgba(0,200,150,0.25);
+}
+.splash-logo-ring.r1 { width: 110px; height: 110px; animation: ripple 2s ease-out infinite; }
+.splash-logo-ring.r2 { width: 130px; height: 130px; animation: ripple 2s ease-out 0.6s infinite; }
+.splash-name {
+  display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: 24px;
+}
+.splash-title { font-size: 28px; font-weight: 900; color: #f0f0f0; letter-spacing: -1px; }
+.splash-sub { font-size: 14px; color: rgba(0,200,150,0.8); font-weight: 500; }
+.splash-dots {
+  position: absolute; bottom: 60px; display: flex; gap: 8px;
+}
+.splash-dots span {
+  width: 7px; height: 7px; border-radius: 50%; background: #00c896;
+  animation: pulse 1.6s infinite;
+}
+.splash-dots span:nth-child(2) { animation-delay: 0.3s; }
+.splash-dots span:nth-child(3) { animation-delay: 0.6s; }
+
+/* ─── Auth ──────────────────────────────────────────────────────────────────── */
+.auth-screen {
+  width: 100%; min-height: 100dvh;
+  background: #050505;
+  display: flex; flex-direction: column;
+  overflow-y: auto; padding: 0 0 40px;
+}
+.auth-logo-area {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 48px 20px 24px; flex-shrink: 0;
+}
+.auth-card {
+  margin: 0 16px;
+  background: #111; border-radius: 24px;
+  padding: 24px 20px;
+  border: 1px solid #1e1e1e;
+}
+.auth-input-wrap {
+  display: flex; align-items: center; gap: 8px;
+  background: #1a1a1a; border-radius: 14px;
+  padding: 0 14px; height: 52px;
+  border: 2px solid #2e2e2e;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.auth-input-wrap:focus-within { border-color: #00c896; box-shadow: 0 0 0 4px rgba(0,200,150,0.1); }
+.auth-input-wrap.error { border-color: #e8512a; }
+.auth-input {
+  flex: 1; background: transparent; border: none; outline: none;
+  color: #f0f0f0; font-size: 15px; text-align: right;
+  font-family: 'Vazirmatn', sans-serif;
+}
+.auth-input.ltr { text-align: left; direction: ltr; }
+.auth-input::placeholder { color: #444; }
+
+.field-err { color: #e8512a; font-size: 12px; margin: 6px 0 0; text-align: right; }
+.field-label { font-size: 12px; color: #888; display: block; margin-bottom: 6px; }
+
+.field-msg { font-size: 12px; margin: 8px 0; padding: 8px 12px; border-radius: 10px; }
+.field-msg.ok { background: rgba(0,200,150,0.1); color: #00c896; border: 1px solid rgba(0,200,150,0.2); }
+.field-msg.err { background: rgba(232,81,42,0.1); color: #e8512a; border: 1px solid rgba(232,81,42,0.2); }
+.field-msg.warn { background: rgba(245,194,61,0.1); color: #f5c23d; border: 1px solid rgba(245,194,61,0.2); }
+
+/* ─── Buttons ───────────────────────────────────────────────────────────────── */
+.primary-button {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; height: 52px;
+  background: linear-gradient(135deg, #00c896, #007a5e);
+  color: white; font-weight: 700; font-size: 15px;
+  border: none; border-radius: 16px; cursor: pointer;
+  transition: opacity 0.2s, transform 0.1s;
+  font-family: 'Vazirmatn', sans-serif;
+}
+.primary-button.cta { background: linear-gradient(135deg, #e8512a, #c93e1a); }
+.primary-button:disabled { opacity: 0.4; cursor: not-allowed; }
+.primary-button:active:not(:disabled) { transform: scale(0.98); }
+
+.outline-button {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 10px 18px; height: 42px;
+  background: transparent; color: #888; font-size: 13px;
+  border: 1px solid #2e2e2e; border-radius: 12px; cursor: pointer;
+  transition: background 0.2s; font-family: 'Vazirmatn', sans-serif;
+}
+.outline-button:hover { background: #1a1a1a; }
+
+.back-btn {
+  width: 36px; height: 36px; border-radius: 10px;
+  background: #1a1a1a; border: 1px solid #2e2e2e;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: #f0f0f0;
+}
+
+/* ─── Balance Card ──────────────────────────────────────────────────────────── */
+.balance-card {
+  border-radius: 22px;
+  background: linear-gradient(135deg, #002d22 0%, #004535 50%, #005e48 100%);
+  padding: 18px;
+  margin-bottom: 16px;
+  position: relative; overflow: hidden;
+  border: 1px solid rgba(0,200,150,0.15);
+  animation: fadeIn 0.5s ease;
+  margin-top: 4px;
+}
+.balance-orb { position: absolute; border-radius: 50%; background: rgba(0,200,150,0.07); pointer-events: none; }
+.balance-orb.orb1 { width: 140px; height: 140px; top: -40px; left: -40px; }
+.balance-orb.orb2 { width: 100px; height: 100px; bottom: -30px; right: -30px; }
+.balance-top-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.balance-main { margin-bottom: 10px; }
+.balance-inner-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 12px; }
+.balance-rate-row { display: flex; justify-content: space-between; align-items: center; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.08); }
+
+/* ─── Services Grid ─────────────────────────────────────────────────────────── */
+.services-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.service-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  padding: 10px 4px; border-radius: 14px;
+  background: #1a1a1a; border: 1px solid #252525;
+  cursor: pointer; transition: all 0.2s;
+}
+.service-btn:active { transform: scale(0.94); }
+.service-icon {
+  width: 42px; height: 42px; border-radius: 13px;
+  display: flex; align-items: center; justify-content: center;
+}
+.service-label {
+  font-size: 9px; text-align: center; line-height: 1.3;
+  font-family: 'Vazirmatn', sans-serif; color: #999;
+}
+
+/* ─── Sub-screens ────────────────────────────────────────────────────────────── */
+.subscreen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #0f0f0f;
+}
+.subscreen-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px 10px; flex-shrink: 0;
+  border-bottom: 1px solid #1a1a1a; background: #0f0f0f;
+}
+.subscreen-title { font-size: 17px; font-weight: 800; color: #f0f0f0; margin: 0; }
+.subscreen-body {
+  flex: 1; overflow-y: auto; overflow-x: hidden;
+  padding: 16px; -webkit-overflow-scrolling: touch;
+}
+
+/* ─── Source dropdown ───────────────────────────────────────────────────────── */
+.select-btn {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; padding: 12px 14px; background: #1a1a1a;
+  border: 2px solid #2e2e2e; border-radius: 16px; cursor: pointer;
+  color: #f0f0f0; font-family: 'Vazirmatn', sans-serif;
+  transition: border-color 0.2s;
+}
+.select-btn:focus, .select-btn:hover { border-color: #00c896; }
+
+.source-dropdown {
+  position: absolute; top: 52px; left: 0; right: 0; z-index: 100;
+  background: #141414; border: 1px solid #222; border-radius: 16px;
+  animation: scaleIn 0.18s ease; transform-origin: top;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  overflow: hidden;
+}
+.source-drop-item {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; padding: 12px 14px; background: none; border: none;
+  border-bottom: 1px solid #1e1e1e; cursor: pointer; color: #f0f0f0;
+  font-family: 'Vazirmatn', sans-serif; transition: background 0.15s;
+  text-align: right;
+}
+.source-drop-item:last-child { border-bottom: none; }
+.source-drop-item:hover { background: rgba(255,255,255,0.04); }
+
+.exchange-transfer-btn {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 12px 14px; background: #1a1a1a;
+  border: 2px solid #252525; border-radius: 14px; cursor: pointer;
+  color: #888; font-family: 'Vazirmatn', sans-serif; font-size: 13px;
+  margin-bottom: 16px; transition: all 0.2s;
+}
+.exchange-transfer-btn.active { border-color: #00c896; color: #00c896; background: rgba(0,200,150,0.05); }
+.toggle-dot {
+  margin-right: auto; width: 36px; height: 20px; border-radius: 10px;
+  background: #2e2e2e; position: relative; transition: background 0.2s;
+}
+.toggle-dot::after {
+  content: ""; position: absolute; top: 3px; right: 3px;
+  width: 14px; height: 14px; border-radius: 50%; background: #888;
+  transition: all 0.2s;
+}
+.toggle-dot.on { background: #00c896; }
+.toggle-dot.on::after { right: auto; left: 3px; background: #fff; }
+
+/* ─── Exchange/Transfer Inputs ──────────────────────────────────────────────── */
+.exchange-input {
+  display: flex; align-items: center; gap: 10px;
+  background: #1a1a1a; border-radius: 14px;
+  padding: 12px 16px; border: 2px solid #2a2a2a;
+  margin-bottom: 2px;
+}
+.exchange-input.destination { opacity: 0.7; }
+.exchange-input label { font-size: 12px; color: #666; width: 20px; flex-shrink: 0; }
+.exchange-input input, .exchange-input output {
+  flex: 1; background: transparent; border: none; outline: none;
+  color: #f0f0f0; font-size: 22px; font-weight: 800; text-align: center;
+  font-family: 'Vazirmatn', sans-serif;
+}
+.exchange-input input::placeholder { color: rgba(255,255,255,0.15); }
+.currency-chip {
+  display: flex; align-items: center; gap: 5px; flex-shrink: 0;
+  background: #111; border-radius: 10px; padding: 5px 10px;
+  font-size: 13px; color: #aaa; font-weight: 600;
+}
+.currency-chip span.toman { color: #00c896; font-weight: 900; }
+.currency-chip span.usdt { color: #f5c23d; font-weight: 900; }
+.ex-assets { display: flex; gap: 8px; margin-bottom: 16px; }
+.ex-asset-btn {
+  flex: 1; display: flex; align-items: center; gap: 10px;
+  padding: 12px; background: #1a1a1a; border: 2px solid #252525;
+  border-radius: 14px; cursor: pointer; transition: all 0.2s; color: #f0f0f0;
+}
+.ex-asset-btn.active { border-color: #00c896; background: rgba(0,200,150,0.06); }
+.ex-symbol {
+  width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; font-weight: 900;
+}
+.ex-symbol.toman { background: rgba(0,200,150,0.15); color: #00c896; }
+.ex-symbol.usdt { background: rgba(245,194,61,0.15); color: #f5c23d; }
+.ex-asset-btn div { text-align: right; }
+.ex-asset-btn div small { font-size: 10px; color: #888; display: block; margin-bottom: 2px; }
+.ex-asset-btn div b { font-size: 13px; font-weight: 800; }
+.swap-dir-btn {
+  width: 40px; height: 40px; border-radius: 12px;
+  background: #1a1a1a; border: 2px solid #2e2e2e;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: #00c896; margin: 0 auto;
+  transition: all 0.2s;
+}
+.swap-dir-btn:hover { background: rgba(0,200,150,0.1); }
+.rate-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 0; font-size: 12px; color: #666;
+}
+.rate-row b { color: #f0f0f0; font-size: 13px; }
+.cooldown-btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  background: #1a1a1a; border-radius: 14px; padding: 14px;
+  font-size: 13px; color: #888; margin-top: 8px;
+}
+.cooldown-btn b { color: #f5c23d; }
+
+/* ─── Charge/Internet ────────────────────────────────────────────────────────── */
+.pkg-btn {
+  padding: 10px; border-radius: 12px; background: #1a1a1a;
+  border: 2px solid #252525; cursor: pointer; color: #aaa;
+  font-family: 'Vazirmatn', sans-serif; font-size: 11px; text-align: center;
+  transition: all 0.2s;
+}
+.pkg-btn.active { border-color: #00c896; background: rgba(0,200,150,0.08); color: #00c896; }
+
+/* ─── Exchange Screen ────────────────────────────────────────────────────────── */
+.ex-tabs {
+  display: flex; gap: 4px; padding: 10px 12px 0; flex-shrink: 0;
+  border-bottom: 1px solid #1a1a1a;
+}
+.ex-tab {
+  flex: 1; padding: 8px 4px; background: none; border: none;
+  font-family: 'Vazirmatn', sans-serif; font-size: 12px; font-weight: 600;
+  color: #555; cursor: pointer; border-bottom: 2px solid transparent;
+  transition: all 0.2s; white-space: nowrap;
+}
+.ex-tab.active { color: #00c896; border-bottom-color: #00c896; }
+.ex-body { padding-top: 12px; }
+
+.pair-list { display: flex; flex-direction: column; gap: 4px; }
+.pair-row {
+  display: flex; align-items: center;
+  padding: 11px 12px; border-radius: 12px;
+  background: #1a1a1a; border: 1px solid transparent;
+  cursor: pointer; width: 100%; color: #f0f0f0;
+  font-family: 'Vazirmatn', sans-serif; transition: all 0.15s;
+}
+.pair-row:hover { background: #222; }
+.pair-row.active { border-color: #00c896; background: rgba(0,200,150,0.05); }
+.pair-name { font-size: 14px; font-weight: 800; }
+.pair-name small { font-size: 11px; font-weight: 500; color: #666; }
+
+.trade-header {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  margin-bottom: 12px; padding-bottom: 12px;
+  border-bottom: 1px solid #1a1a1a;
+}
+.trade-form {
+  background: #1a1a1a; border-radius: 16px;
+  padding: 14px; margin-top: 4px;
+}
+.side-btn {
+  flex: 1; padding: 10px; border-radius: 10px;
+  border: 2px solid transparent; cursor: pointer;
+  font-family: 'Vazirmatn', sans-serif; font-size: 14px; font-weight: 700;
+  transition: all 0.2s; background: #111; color: #666;
+}
+.side-btn.buy.active { background: rgba(0,200,150,0.15); border-color: #00c896; color: #00c896; }
+.side-btn.sell.active { background: rgba(232,92,92,0.15); border-color: #e85c5c; color: #e85c5c; }
+
+/* ─── Modal ─────────────────────────────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 80;
+  background: rgba(0,0,0,0.75); backdrop-filter: blur(4px);
+  display: flex; align-items: flex-end; justify-content: center;
+  animation: fadeIn 0.2s ease;
+}
+.modal-card {
+  background: #141414; border-radius: 28px 28px 0 0;
+  padding: 24px 20px calc(24px + env(safe-area-inset-bottom, 0));
+  width: 100%; max-width: 430px;
+  border: 1px solid #222; border-bottom: none;
+  animation: scaleIn 0.25s cubic-bezier(0.34,1.2,0.64,1);
+  max-height: 90dvh; overflow-y: auto;
+}
+.modal-card h3 { font-size: 18px; font-weight: 800; color: #f0f0f0; margin: 0 0 16px; text-align: center; }
+.modal-handle {
+  width: 36px; height: 4px; border-radius: 2px; background: #2e2e2e;
+  margin: -8px auto 16px;
+}
+.modal-detail {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 0; border-bottom: 1px solid #1a1a1a;
+}
+.modal-detail:last-of-type { border-bottom: none; }
+.modal-detail span { font-size: 13px; color: #888; }
+.modal-detail b { font-size: 13px; color: #f0f0f0; font-weight: 600; max-width: 60%; text-align: left; word-break: break-all; }
+
+.asset-detail-row {
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 0; border-bottom: 1px solid #1a1a1a;
+}
+.asset-detail-icon {
+  width: 44px; height: 44px; border-radius: 13px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; font-weight: 900; flex-shrink: 0;
+}
+.asset-detail-icon.toman { background: rgba(0,200,150,0.15); color: #00c896; }
+.asset-detail-icon.usdt { background: rgba(245,194,61,0.15); color: #f5c23d; }
+.asset-detail-row div p { font-size: 12px; color: #888; margin: 0 0 4px; }
+.asset-detail-row div strong { font-size: 16px; font-weight: 800; color: #f0f0f0; }
+.asset-total-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 0; border-top: 1px solid #252525; margin-top: 4px;
+}
+.asset-total-row span { font-size: 13px; color: #888; }
+.asset-total-row b { font-size: 15px; font-weight: 800; color: #f0f0f0; }
+
+/* ─── PIN card ───────────────────────────────────────────────────────────────── */
+.pin-card { text-align: center; }
+
+/* ─── Light theme ─────────────────────────────────────────────────────────────── */
+.light-theme { background: #f5f5f5; color: #111; }
+.light-theme .app-header { background: #fff; border-bottom: 1px solid #e5e5e5; }
+.light-theme .app-header .brand span { color: #111; }
+.light-theme .app-header .hamburger-btn { background: #f0f0f0; color: #333; }
+.light-theme .balance-card { background: linear-gradient(135deg,#007a5e,#00c896); }
+.light-theme .service-btn { background: #fff; border-color: #e5e5e5; }
+.light-theme .service-label { color: #333 !important; }
+.light-theme .bottom-nav { background: #fff; border-top: 1px solid #e5e5e5; }
+.light-theme .bottom-nav button { color: #888; }
+.light-theme .bottom-nav button.active { color: #00c896; }
+.light-theme .subscreen { background: #f0f0f0; }
+.light-theme .subscreen-header { background: #fff; border-bottom: 1px solid #e5e5e5; }
+.light-theme .subscreen-title { color: #111; }
+.light-theme .back-btn { background: #f0f0f0; color: #333; }
+.light-theme .auth-input-wrap { background: #fff; border-color: #ddd; }
+.light-theme .auth-input { color: #111; }
+.light-theme .field-label { color: #555; }
+.light-theme .modal-card { background: #fff; border-color: #eee; }
+.light-theme .modal-card h3 { color: #111; }
+.light-theme .modal-detail { border-color: #f0f0f0; }
+.light-theme .modal-detail span { color: #888; }
+.light-theme .modal-detail b { color: #111; }
+
+-----------------------------------------
+
+FILE: src/main.tsx
+-----------------------------------------
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import App from './App'
+import './index.css'
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+)
+
+-----------------------------------------
+
+FILE: src/vite-env.d.ts
+-----------------------------------------
+/// <reference types="vite/client" />
+
+-----------------------------------------
+
+FILE: index.html
+-----------------------------------------
+<!doctype html>
+<html lang="<!-- figma:lang -->">
+  <head>
+    <!-- figma:head-start -->
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title><!-- figma:title --></title>
+    <!-- figma:head-end -->
+  </head>
+  <body>
+    <!-- figma:body-start -->
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <!-- figma:body-end -->
+  </body>
+</html>
+
+-----------------------------------------
+
