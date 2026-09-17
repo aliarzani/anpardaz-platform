@@ -19,7 +19,7 @@ CREATE OR REPLACE FUNCTION accounting_reject_posted_entry_mutation()
 RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE tx_status TEXT;
 BEGIN
-  SELECT status INTO tx_status FROM journal_transactions WHERE id = COALESCE(OLD.transaction_id,NEW.transaction_id);
+  SELECT status INTO tx_status FROM journal_transactions WHERE id = COALESCE(OLD.journal_transaction_id,NEW.journal_transaction_id);
   IF tx_status = 'posted' THEN
     RAISE EXCEPTION 'entries of a posted journal transaction are immutable';
   END IF;
@@ -38,15 +38,17 @@ BEGIN
   IF NEW.amount IS NULL OR NEW.amount <= 0 THEN
     RAISE EXCEPTION 'journal entry amount must be positive';
   END IF;
-  IF (NEW.debit > 0 AND NEW.credit > 0) OR (NEW.debit < 0 OR NEW.credit < 0) THEN
-    RAISE EXCEPTION 'journal entry must contain either debit or credit';
-  END IF;
-  IF NEW.debit = 0 AND NEW.credit = 0 THEN
-    RAISE EXCEPTION 'journal entry cannot be zero';
+  IF NEW.direction NOT IN ('debit','credit') THEN
+    RAISE EXCEPTION 'journal entry direction is invalid';
   END IF;
   RETURN NEW;
 END;
 $$;
+
+DROP TRIGGER IF EXISTS trg_journal_entries_validate ON journal_entries;
+CREATE TRIGGER trg_journal_entries_validate
+BEFORE INSERT OR UPDATE ON journal_entries
+FOR EACH ROW EXECUTE FUNCTION accounting_validate_entry_amount();
 
 INSERT INTO schema_migrations(version) VALUES('003_ledger_integrity') ON CONFLICT(version) DO NOTHING;
 COMMIT;
