@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Pool } from 'pg';
-import { ensurePlatformUser, requireAuth } from '../auth.js';
-type RequestWithAuth=FastifyRequest&{auth:{sub:string;email:string;role:string}};
+import { ensurePlatformUser, requireAuth, type AuthClaims } from '../auth.js';
+type RequestWithAuth=FastifyRequest&{auth:AuthClaims};
 const isAdmin=(r:RequestWithAuth)=>['admin','super_admin','operator'].includes(r.auth.role);
 const deny=(reply:{code:(n:number)=>{send:(v:unknown)=>unknown}})=>reply.code(403).send({error:'admin_required'});
 async function audit(pool:Pool,req:RequestWithAuth,action:string,type:string,id:string|null,reason:string,metadata:unknown={}){await pool.query('INSERT INTO audit_logs(identity_id,actor_type,actor_identity_id,action,resource_type,resource_id,reason,metadata) VALUES($1,\'admin\',$1,$2,$3,$4,$5,$6)',[req.auth.sub,action,type,id,reason,metadata]);}
