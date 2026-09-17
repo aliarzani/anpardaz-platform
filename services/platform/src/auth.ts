@@ -2,16 +2,10 @@ import { createPrivateKey, createPublicKey, randomBytes, randomUUID, scrypt as s
 import { promisify } from 'node:util';
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import type { Pool } from 'pg';
-
-const scrypt = promisify(scryptCallback);
-const PRIVATE_KEY_B64 = process.env.IDENTITY_PRIVATE_KEY_B64;
-if (!PRIVATE_KEY_B64) throw new Error('IDENTITY_PRIVATE_KEY_B64 must be configured');
-const privateKey = createPrivateKey({ key: Buffer.from(PRIVATE_KEY_B64, 'base64'), format: 'der', type: 'pkcs8' });
-const publicKey = createPublicKey(privateKey);
-const TOKEN_TTL_SECONDS = 60 * 60;
-const issuer = () => process.env.IDENTITY_ISSUER ?? 'anpardaz-platform';
-type Claims = { sub:string; email:string; role:string; iss:string; aud:'anpardaz-ecosystem'; iat:number; exp:number };
-type AuthBody = { email?:string; password?:string };
+const scrypt=promisify(scryptCallback); const PRIVATE_KEY_B64=process.env.IDENTITY_PRIVATE_KEY_B64;
+if(!PRIVATE_KEY_B64)throw new Error('IDENTITY_PRIVATE_KEY_B64 must be configured');
+const privateKey=createPrivateKey({key:Buffer.from(PRIVATE_KEY_B64,'base64'),format:'der',type:'pkcs8'}); const publicKey=createPublicKey(privateKey); const TOKEN_TTL_SECONDS=3600; const issuer=()=>process.env.IDENTITY_ISSUER??'anpardaz-platform';
+type Claims={sub:string;email:string;role:string;iss:string;aud:'anpardaz-ecosystem';iat:number;exp:number}; type AuthBody={email?:string;password?:string};
 const b64=(v:string|Buffer)=>Buffer.from(v).toString('base64url');
 async function hashPassword(p:string){const s=randomBytes(16).toString('base64url');const d=(await scrypt(p,s,64)) as Buffer;return `scrypt$${s}$${d.toString('base64url')}`;}
 async function verifyPassword(p:string,x:string){const[,s,e]=x.split('$');if(!s||!e)return false;const expected=Buffer.from(e,'base64url');const actual=(await scrypt(p,s,expected.length)) as Buffer;return expected.length===actual.length&&timingSafeEqual(expected,actual);}
@@ -19,7 +13,7 @@ function createToken(c:Claims){const h=b64(JSON.stringify({alg:'EdDSA',typ:'JWT'
 const valid=(b:AuthBody):b is Required<AuthBody>=>typeof b.email==='string'&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(b.email)&&typeof b.password==='string'&&b.password.length>=10&&b.password.length<=128;
 export function registerAuthRoutes(app:{post:Function},pool:Pool){
  app.post('/api/v1/auth/register',async(req:FastifyRequest,reply:FastifyReply)=>{const b=(req.body??{}) as AuthBody;if(!valid(b))return reply.code(400).send({error:'invalid_credentials'});const email=b.email.trim().toLowerCase();try{const r=await pool.query<{identity_id:string;role:string}>(`INSERT INTO platform_users(identity_id,email,password_hash) VALUES($1,$2,$3) RETURNING identity_id,role`,[randomUUID(),email,await hashPassword(b.password)]);const u=r.rows[0],now=Math.floor(Date.now()/1000);return reply.code(201).send({accessToken:createToken({sub:u.identity_id,email,role:u.role,iss:issuer(),aud:'anpardaz-ecosystem',iat:now,exp:now+TOKEN_TTL_SECONDS}),expiresIn:TOKEN_TTL_SECONDS});}catch(e:any){if(e?.code==='23505')return reply.code(409).send({error:'email_already_registered'});req.log.error(e);return reply.code(500).send({error:'registration_failed'});}});
- app.post('/api/v1/auth/login',async(req:FastifyRequest,reply:FastifyReply)=>{const b=(req.body??{}) as AuthBody;if(!valid(b))return reply.code(400).send({error:'invalid_credentials'});const r=await pool.query<{identity_id:string;email:string;password_hash:string;role:string;status:string}>(`SELECT identity_id,email,password_hash,role,status FROM platform_users WHERE LOWER(email)=LOWER($1) LIMIT 1`,[b.email.trim()]);const u=r.rows[0];if(!u?.password_hash||u.status!=='active'||!(await verifyPassword(b.password,u.password_hash)))return reply.code(401).send({error:'invalid_credentials'});await pool.query('UPDATE platform_users SET last_login_at=NOW() WHERE identity_id=$1',[u.identity_id]);const now=Math.floor(Date.now()/1000);return {accessToken:createToken({sub:u.identity_id,email:u.email,role:u.role,iss:issuer(),aud:'anpardaz-ecosystem',iat:now,exp:now+TOKEN_TTL_SECONDS}),expiresIn:TTL};});
+ app.post('/api/v1/auth/login',async(req:FastifyRequest,reply:FastifyReply)=>{const b=(req.body??{}) as AuthBody;if(!valid(b))return reply.code(400).send({error:'invalid_credentials'});const r=await pool.query<{identity_id:string;email:string;password_hash:string;role:string;status:string}>(`SELECT identity_id,email,password_hash,role,status FROM platform_users WHERE LOWER(email)=LOWER($1) LIMIT 1`,[b.email.trim()]);const u=r.rows[0];if(!u?.password_hash||u.status!=='active'||!(await verifyPassword(b.password,u.password_hash)))return reply.code(401).send({error:'invalid_credentials'});await pool.query('UPDATE platform_users SET last_login_at=NOW() WHERE identity_id=$1',[u.identity_id]);const now=Math.floor(Date.now()/1000);return {accessToken:createToken({sub:u.identity_id,email:u.email,role:u.role,iss:issuer(),aud:'anpardaz-ecosystem',iat:now,exp:now+TOKEN_TTL_SECONDS}),expiresIn:TOKEN_TTL_SECONDS};});
 }
-export function verifyIdentityToken(token:string):Claims|null{const[h,p,s]=token.split('.');if(!h||!p||!s)return null;try{if(!verifyData(null,Buffer.from(`${h}.${p}`),publicKey,Buffer.from(s,'base64url')))return null;const c=JSON.parse(Buffer.from(p,'base64url').toString()) as Claims;return c.aud==='anpardaz-ecosystem'&&c.iss===issuer()&&c.exp>Math.floor(Date.now()/1000)?c:null;}catch{return null;}}
+export function verifyIdentityToken(t:string):Claims|null{const[h,p,s]=t.split('.');if(!h||!p||!s)return null;try{if(!verifyData(null,Buffer.from(`${h}.${p}`),publicKey,Buffer.from(s,'base64url')))return null;const c=JSON.parse(Buffer.from(p,'base64url').toString()) as Claims;return c.aud==='anpardaz-ecosystem'&&c.iss===issuer()&&c.exp>Math.floor(Date.now()/1000)?c:null;}catch{return null;}}
 export async function requireAuth(req:FastifyRequest,reply:FastifyReply){const h=req.headers.authorization;const c=h?.startsWith('Bearer ')?verifyIdentityToken(h.slice(7)):null;if(!c)return reply.code(401).send({error:'unauthorized'});(req as FastifyRequest&{auth:Claims}).auth=c;}
