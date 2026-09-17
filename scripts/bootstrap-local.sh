@@ -5,12 +5,19 @@ cd "$ROOT"
 cp -n databases/.env.example databases/.env 2>/dev/null || true
 
 make_service_env() {
-  local service="$1" port="$2" db="$3" dbport="$4" user="$5" password="$6" file="services/${service}/.env"
+  local service="$1"
+  local port="$2"
+  local db="$3"
+  local dbport="$4"
+  local user="$5"
+  local password="$6"
+  local file="services/${service}/.env"
   if [[ ! -f "$file" ]]; then
     cp "services/${service}/.env.example" "$file"
     sed -i "s#^PORT=.*#PORT=${port}#; s#^DATABASE_URL=.*#DATABASE_URL=postgresql://${user}:${password}@localhost:${dbport}/${db}#" "$file"
   fi
 }
+
 make_service_env anpardaz 4001 anpardaz 5433 anpardaz local-anpardaz-password
 make_service_env ansarraf 4002 ansarraf 5434 ansarraf local-ansarraf-password
 make_service_env platform 4003 platform 5435 platform local-platform-password
