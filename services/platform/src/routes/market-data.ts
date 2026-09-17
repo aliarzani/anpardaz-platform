@@ -1,4 +1,5 @@
 import type {FastifyInstance,FastifyRequest,FastifyReply} from 'fastify';
+import type {Pool} from 'pg';
 import {requireAuth} from '../auth.js';
 
 type R=FastifyRequest&{auth:{sub:string;role:string}};const r=(x:FastifyRequest)=>x as R;
