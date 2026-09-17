@@ -21,6 +21,7 @@ make_service_env() {
 make_service_env anpardaz 4001 anpardaz 5433 anpardaz local-anpardaz-password
 make_service_env ansarraf 4002 ansarraf 5434 ansarraf local-ansarraf-password
 make_service_env platform 4003 platform 5435 platform local-platform-password
+make_service_env accounting 4004 accounting 5436 accounting local-accounting-password
 
 # Generate one Ed25519 signing key for the central identity service and distribute only its public key.
 if ! grep -q '^IDENTITY_PRIVATE_KEY_B64=' services/platform/.env 2>/dev/null || grep -q 'generated-by-bootstrap-local' services/platform/.env; then
@@ -38,16 +39,22 @@ if ! grep -q '^IDENTITY_PRIVATE_KEY_B64=' services/platform/.env 2>/dev/null || 
   done
 fi
 
+if [[ ! -f services/accounting/.env ]]; then
+  cp services/accounting/.env.example services/accounting/.env
+fi
+if grep -q '^ACCOUNTING_INTERNAL_TOKEN=replace-in-local-bootstrap$' services/accounting/.env; then
+  accounting_token="$(openssl rand -hex 32)"
+  sed -i "s#^ACCOUNTING_INTERNAL_TOKEN=.*#ACCOUNTING_INTERNAL_TOKEN=${accounting_token}#" services/accounting/.env
+fi
+
 docker compose --env-file databases/.env -f databases/docker-compose.yml up -d
 bash databases/migrate.sh
-pnpm --dir services/anpardaz install
-pnpm --dir services/ansarraf install
-pnpm --dir services/platform install
-pnpm --dir services/anpardaz build
-pnpm --dir services/ansarraf build
-pnpm --dir services/platform build
+for service in anpardaz ansarraf platform accounting; do
+  pnpm --dir "services/${service}" install
+  pnpm --dir "services/${service}" build
+done
 pnpm --dir apps/mobile install
 pnpm --dir apps/mobile run build
 pnpm --dir apps/web install
 pnpm --dir apps/web run build
-echo "Local An Pardaz platform bootstrap completed successfully. Shared identity is configured across Platform, An Pardaz and An Sarraf."
+echo "Local An Pardaz platform bootstrap completed successfully across all four services and databases."
