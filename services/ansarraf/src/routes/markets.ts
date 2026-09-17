@@ -23,15 +23,4 @@ export function registerMarketRoutes(app: FastifyInstance, pool: Pool) {
     );
     return { wallets: r.rows };
   });
-
-  app.get('/api/v1/orders', { preHandler: requireAuth }, async (request) => {
-    const auth = (request as AuthenticatedRequest).auth;
-    const customerId = await ensureCustomer(pool, auth);
-    const r = await pool.query(
-      `SELECT id,base_asset_id,quote_asset_id,side,order_type,price,quantity,status,created_at
-       FROM orders WHERE customer_id=$1 ORDER BY created_at DESC LIMIT 100`,
-      [customerId],
-    );
-    return { orders: r.rows };
-  });
 }
