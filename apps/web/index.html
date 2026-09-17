@@ -3,17 +3,21 @@
   <head>
     <!-- figma:head-start -->
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <!-- Keep the web portal's desktop canvas on phones too. The mobile browser
+         lays out a 1280px viewport and scales the complete desktop page down,
+         instead of switching to a responsive/mobile layout or horizontal panning. -->
+    <meta name="viewport" content="width=1280, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <style>
-      /* An Pardaz web: keep the desktop layout on narrow screens. */
+      /* An Pardaz web is intentionally desktop-only on every device. */
       html,
       body,
       #root {
         min-width: 1280px;
+        width: 1280px;
       }
 
       body {
-        overflow-x: auto;
+        overflow-x: hidden;
       }
     </style>
     <title><!-- figma:title --></title>
