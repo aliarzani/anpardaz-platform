@@ -1,0 +1,44 @@
+services:
+  anpardaz-db:
+    image: postgres:17
+    container_name: anpardaz-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: anpardaz
+      POSTGRES_USER: anpardaz
+      POSTGRES_PASSWORD: change-me
+    ports:
+      - "5433:5432"
+    volumes:
+      - anpardaz-db-data:/var/lib/postgresql/data
+
+  ansarraf-db:
+    image: postgres:17
+    container_name: ansarraf-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ansarraf
+      POSTGRES_USER: ansarraf
+      POSTGRES_PASSWORD: change-me
+    ports:
+      - "5434:5432"
+    volumes:
+      - ansarraf-db-data:/var/lib/postgresql/data
+
+  platform-db:
+    image: postgres:17
+    container_name: platform-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: platform
+      POSTGRES_USER: platform
+      POSTGRES_PASSWORD: change-me
+    ports:
+      - "5435:5432"
+    volumes:
+      - platform-db-data:/var/lib/postgresql/data
+
+volumes:
+  anpardaz-db-data:
+  ansarraf-db-data:
+  platform-db-data:
