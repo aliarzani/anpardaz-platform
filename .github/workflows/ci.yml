@@ -57,3 +57,8 @@ jobs:
         with:
           name: build-log-${{ matrix.name }}
           path: ${{ matrix.path }}/build.log
+      - name: Job summary
+        if: always()
+        run: |
+          echo "### ${{ matrix.name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Build target: \\`${{ matrix.path }}\\`" >> "$GITHUB_STEP_SUMMARY"
