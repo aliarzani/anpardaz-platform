@@ -1,0 +1,10 @@
+BEGIN;
+CREATE TABLE IF NOT EXISTS approval_requests(id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,requester_identity_id UUID,requester_service TEXT NOT NULL,action TEXT NOT NULL,resource_type TEXT NOT NULL,resource_id TEXT NOT NULL,payload JSONB NOT NULL DEFAULT '{}'::jsonb,risk_level TEXT NOT NULL DEFAULT 'normal' CHECK(risk_level IN ('low','normal','high','critical')),status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected','executed','failed','cancelled')),approver_identity_id UUID,decision_reason TEXT,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),decided_at TIMESTAMPTZ,executed_at TIMESTAMPTZ);
+CREATE TABLE IF NOT EXISTS service_health_snapshots(id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,service TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('healthy','degraded','down','unknown')),version TEXT,latency_ms INTEGER,details JSONB NOT NULL DEFAULT '{}'::jsonb,checked_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+CREATE TABLE IF NOT EXISTS reconciliation_items(id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,run_id BIGINT NOT NULL REFERENCES reconciliation_runs(id) ON DELETE CASCADE,resource_type TEXT NOT NULL,resource_id TEXT NOT NULL,expected JSONB,actual JSONB,difference JSONB,status TEXT NOT NULL DEFAULT 'mismatch' CHECK(status IN ('matched','mismatch','missing','unexpected')),created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+CREATE INDEX IF NOT EXISTS idx_approval_status_created ON approval_requests(status,created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_approval_resource ON approval_requests(resource_type,resource_id,created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_service_health_service_checked ON service_health_snapshots(service,checked_at DESC);
+CREATE INDEX IF NOT EXISTS idx_reconciliation_items_run_status ON reconciliation_items(run_id,status);
+INSERT INTO schema_migrations(version) VALUES('014_operations_approvals') ON CONFLICT(version) DO NOTHING;
+COMMIT;
