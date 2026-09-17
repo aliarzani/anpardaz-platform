@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: anpardaz-service
+            path: services/anpardaz
+          - name: ansarraf-service
+            path: services/ansarraf
+          - name: platform-service
+            path: services/platform
+          - name: mobile
+            path: apps/mobile
+          - name: web
+            path: apps/web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.24.0
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: |
+            apps/mobile/pnpm-lock.yaml
+            apps/web/pnpm-lock.yaml
+      - name: Install dependencies
+        working-directory: ${{ matrix.path }}
+        run: pnpm install --no-frozen-lockfile
+      - name: Build
+        working-directory: ${{ matrix.path }}
+        run: pnpm run build
