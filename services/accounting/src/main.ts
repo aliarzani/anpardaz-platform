@@ -1,0 +1,32 @@
+import Fastify from 'fastify';
+import { Pool } from 'pg';
+
+const app=Fastify({logger:true});
+const port=Number(process.env.PORT??4004);
+const pool=new Pool({connectionString:process.env.DATABASE_URL,max:10,connectionTimeoutMillis:5000,idleTimeoutMillis:30000});
+const internalToken=process.env.ACCOUNTING_INTERNAL_TOKEN;
+if(!internalToken)throw new Error('ACCOUNTING_INTERNAL_TOKEN must be configured');
+const authorized=(request:{headers:{authorization?:string}})=>request.headers.authorization===`Bearer ${internalToken}`;
+
+app.get('/health',async()=>({service:'accounting',status:'ok'}));
+app.get('/health/db',async(_request,reply)=>{try{const r=await pool.query<{version:string}>('SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1');return{service:'accounting',database:'ok',migration:r.rows[0]?.version??null};}catch{return reply.code(503).send({service:'accounting',database:'unavailable'});}});
+
+app.post('/internal/v1/ledger/transactions',async(request,reply)=>{
+ if(!authorized(request))return reply.code(401).send({error:'unauthorized'});
+ const body=(request.body??{}) as {referenceType?:string;referenceId?:string;idempotencyKey?:string;description?:string;entries?:Array<{accountId?:number;direction?:string;amount?:string;currency?:string;metadata?:unknown}>};
+ if(!body.referenceType||!body.referenceId||!body.idempotencyKey||!Array.isArray(body.entries)||body.entries.length<2)return reply.code(400).send({error:'invalid_transaction'});
+ const client=await pool.connect();
+ try{await client.query('BEGIN');
+  const existing=await client.query('SELECT id,transaction_uuid,status FROM journal_transactions WHERE idempotency_key=$1',[body.idempotencyKey]);
+  if(existing.rows[0]){await client.query('ROLLBACK');return {transaction:existing.rows[0],idempotent:true};}
+  const t=await client.query<{id:string;transaction_uuid:string;status:string}>('INSERT INTO journal_transactions(reference_type,reference_id,idempotency_key,description,status) VALUES($1,$2,$3,$4,\'pending\') RETURNING id,transaction_uuid,status',[body.referenceType,body.referenceId,body.idempotencyKey,body.description??null]);
+  for(const e of body.entries){if(!e.accountId||!['debit','credit'].includes(e.direction??'')||!e.amount||Number(e.amount)<=0||!e.currency)throw new Error('invalid_entry');await client.query('INSERT INTO journal_entries(journal_transaction_id,ledger_account_id,direction,amount,currency,metadata) VALUES($1,$2,$3,$4,$5,$6)',[t.rows[0].id,e.accountId,e.direction,e.amount,e.currency,e.metadata??{}]);}
+  const totals=await client.query<{debit:string;credit:string}>('SELECT COALESCE(SUM(amount) FILTER(WHERE direction=\'debit\'),0)::text debit,COALESCE(SUM(amount) FILTER(WHERE direction=\'credit\'),0)::text credit FROM journal_entries WHERE journal_transaction_id=$1',[t.rows[0].id]);
+  if(totals.rows[0].debit==='0'||totals.rows[0].debit!==totals.rows[0].credit)throw new Error('unbalanced_transaction');
+  await client.query("UPDATE journal_transactions SET status='posted',posted_at=NOW() WHERE id=$1",[t.rows[0].id]);await client.query('COMMIT');return{transaction:{...t.rows[0],status:'posted'},idempotent:false};
+ }catch(e){await client.query('ROLLBACK');request.log.error(e);return reply.code(400).send({error:e instanceof Error?e.message:'ledger_error'});}finally{client.release();}
+});
+
+app.get('/internal/v1/ledger/transactions/:id',async(request,reply)=>{if(!authorized(request))return reply.code(401).send({error:'unauthorized'});const id=Number((request.params as {id:string}).id);if(!Number.isSafeInteger(id))return reply.code(400).send({error:'invalid_id'});const t=await pool.query('SELECT * FROM journal_transactions WHERE id=$1',[id]);if(!t.rows[0])return reply.code(404).send({error:'transaction_not_found'});const e=await pool.query('SELECT * FROM journal_entries WHERE journal_transaction_id=$1 ORDER BY id',[id]);return{transaction:t.rows[0],entries:e.rows};});
+
+const shutdown=async()=>{await app.close();await pool.end()};process.on('SIGTERM',shutdown);process.on('SIGINT',shutdown);await app.listen({host:'0.0.0.0',port});
