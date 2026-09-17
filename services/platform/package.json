@@ -3,6 +3,6 @@
   "private": true,
   "type": "module",
   "scripts": {"dev": "tsx watch src/main.ts", "build": "tsc -p tsconfig.json", "start": "node dist/main.js"},
-  "dependencies": {"@fastify/cors": "latest", "fastify": "latest"},
-  "devDependencies": {"@types/node": "latest", "tsx": "latest", "typescript": "latest"}
+  "dependencies": {"@fastify/cors": "latest", "fastify": "latest", "pg": "latest"},
+  "devDependencies": {"@types/node": "latest", "@types/pg": "latest", "tsx": "latest", "typescript": "latest"}
 }
