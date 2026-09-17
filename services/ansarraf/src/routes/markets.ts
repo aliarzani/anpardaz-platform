@@ -1,8 +1,8 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Pool } from 'pg';
-import { ensureCustomer, requireAuth } from '../auth.js';
+import { ensureCustomer, requireAuth, type AuthClaims } from '../auth.js';
 
-type AuthenticatedRequest = FastifyRequest & { auth: { sub: string; email: string; role: string } };
+type AuthenticatedRequest = FastifyRequest & { auth: AuthClaims };
 
 export function registerMarketRoutes(app: FastifyInstance, pool: Pool) {
   app.get('/api/v1/assets', async () => {
@@ -17,10 +17,8 @@ export function registerMarketRoutes(app: FastifyInstance, pool: Pool) {
     const customerId = await ensureCustomer(pool, auth);
     const r = await pool.query(
       `SELECT w.id,w.asset_id,w.available_balance,w.locked_balance,w.created_at,a.symbol,a.name
-       FROM wallets w
-       JOIN assets a ON a.id=w.asset_id
-       WHERE w.customer_id=$1
-       ORDER BY a.symbol`,
+       FROM wallets w JOIN assets a ON a.id=w.asset_id
+       WHERE w.customer_id=$1 ORDER BY a.symbol`,
       [customerId],
     );
     return { wallets: r.rows };
@@ -31,10 +29,7 @@ export function registerMarketRoutes(app: FastifyInstance, pool: Pool) {
     const customerId = await ensureCustomer(pool, auth);
     const r = await pool.query(
       `SELECT id,base_asset_id,quote_asset_id,side,order_type,price,quantity,status,created_at
-       FROM orders
-       WHERE customer_id=$1
-       ORDER BY created_at DESC
-       LIMIT 100`,
+       FROM orders WHERE customer_id=$1 ORDER BY created_at DESC LIMIT 100`,
       [customerId],
     );
     return { orders: r.rows };
