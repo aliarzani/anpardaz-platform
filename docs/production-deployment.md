@@ -1,6 +1,6 @@
 # Production Deployment Blueprint
 
-Production is intentionally split into three service groups:
+Production is split into four independently deployable service groups:
 
 1. **VPS 1 — An Pardaz / Banking**
    - `services/anpardaz`
@@ -8,16 +8,23 @@ Production is intentionally split into three service groups:
 2. **VPS 2 — An Sarraf / Exchange**
    - `services/ansarraf`
    - An Sarraf PostgreSQL database on the exchange network
-3. **VPS 3 — Platform**
+3. **VPS 3 — Platform / Control Plane**
    - `services/platform`
    - Platform PostgreSQL database
+   - identity, content, community, support, moderation and operational control plane
+4. **VPS 4 — Accounting**
+   - `services/accounting`
+   - Accounting PostgreSQL database
+   - append-only double-entry ledger, holds, statements and reversals
 
 ## Isolation rules
 
 - Never expose PostgreSQL to the public Internet.
-- Each VPS gets its own database credentials, JWT secret and deployment secrets.
-- Banking and exchange databases must not accept connections from the other service group.
-- Cross-service communication must use authenticated HTTPS APIs and explicit allowlists.
+- Each service group gets its own database credentials and deployment secrets.
+- Banking, exchange and accounting databases must not accept connections from unrelated service groups.
+- No cross-database foreign keys are used. Cross-service operations use authenticated APIs and explicit allowlists.
+- Accounting is the financial ledger source of truth; market-data ingestion and content services must never mutate balances.
+- Posted ledger transactions and entries are immutable. Corrections are represented by reversal/adjustment transactions.
 - Containers run as the unprivileged `node` user with a read-only filesystem and dropped Linux capabilities.
 - Put TLS termination and public routing in the infrastructure layer; backend ports are bound to loopback in the supplied compose templates.
 
@@ -25,20 +32,31 @@ Production is intentionally split into three service groups:
 
 For each VPS, copy its matching `*.env.example` to an environment-only file, replace all placeholders, build the service image and start its compose file.
 
-Run the database migrations from the database host/network before enabling authenticated traffic. The migration runner is idempotent and applies migrations in filename order.
+Run database migrations from the corresponding database host/network before enabling authenticated traffic. The migration runner is idempotent and applies migrations in filename order.
 
 ## Secrets
 
-Generate unique high-entropy `JWT_SECRET` values per environment. Do not store production secrets in GitHub source files. Use the VPS secret manager or protected environment configuration.
+Generate unique high-entropy secrets per environment. Never use repository placeholders in production. In particular configure:
+
+- Platform Ed25519 identity private key
+- Platform guest-interaction secret
+- Accounting internal service credential
+- Database passwords
+- Any external provider credentials
+
+Do not store production secrets in GitHub source files. Use the VPS secret manager or protected environment configuration.
 
 ## Operational checks
 
 After deployment verify:
 
-- `GET /health` returns HTTP 200.
+- `GET /health` returns HTTP 200 for every service.
 - `GET /health/db` returns HTTP 200 only when the intended database is reachable and migrations are present.
-- `GET /api/v1/status` reports `v1` and `ready`.
+- `GET /api/v1/status` reports `v1` and `ready` where exposed.
 - Authentication registration/login works only over HTTPS.
 - Public traffic cannot reach PostgreSQL or internal backend ports directly.
+- Accounting transaction creation is idempotent and rejects invalid decimal amounts, mixed currencies and unbalanced journals.
+- A posted accounting transaction cannot be edited or deleted; a reversal creates a new balanced transaction.
+- Community moderation actions are authenticated, permission-checked and audited.
 
 The supplied compose files are deployment templates, not a claim that a particular VPS provider, firewall or domain has already been configured.
