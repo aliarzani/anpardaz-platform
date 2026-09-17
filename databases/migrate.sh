@@ -20,15 +20,26 @@ run_migrations() {
   local user="$3"
   local password="$4"
   local dir="$5"
+  local migration_file
 
   echo "Migrating ${service}..."
-  docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" exec -T "${service}" \
-    env PGPASSWORD="${password}" psql -v ON_ERROR_STOP=1 -U "${user}" -d "${database}" \
-    < "${ROOT_DIR}/${dir}/001_foundation.sql"
+  shopt -s nullglob
+  local migrations=("${ROOT_DIR}/${dir}"/*.sql)
+  shopt -u nullglob
 
-  docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" exec -T "${service}" \
-    env PGPASSWORD="${password}" psql -v ON_ERROR_STOP=1 -U "${user}" -d "${database}" \
-    < "${ROOT_DIR}/${dir}/002_core.sql"
+  if (( ${#migrations[@]} == 0 )); then
+    echo "No SQL migrations found for ${service}."
+    return 0
+  fi
+
+  IFS=$'\n' migrations=( $(printf '%s\n' "${migrations[@]}" | sort) )
+
+  for migration_file in "${migrations[@]}"; do
+    echo "  -> $(basename "${migration_file}")"
+    docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" exec -T "${service}" \
+      env PGPASSWORD="${password}" psql -v ON_ERROR_STOP=1 -U "${user}" -d "${database}" \
+      < "${migration_file}"
+  done
 }
 
 run_migrations anpardaz-db "${ANPARDAZ_DB_NAME}" "${ANPARDAZ_DB_USER}" "${ANPARDAZ_DB_PASSWORD}" anpardaz
