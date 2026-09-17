@@ -23,7 +23,6 @@ make_service_env ansarraf 4002 ansarraf 5434 ansarraf local-ansarraf-password
 make_service_env platform 4003 platform 5435 platform local-platform-password
 make_service_env accounting 4004 accounting 5436 accounting local-accounting-password
 
-# Generate one Ed25519 signing key for the central identity service and distribute only its public key.
 if ! grep -q '^IDENTITY_PRIVATE_KEY_B64=' services/platform/.env 2>/dev/null || grep -q 'generated-by-bootstrap-local' services/platform/.env; then
   tmpdir="$(mktemp -d)"
   trap 'rm -rf "$tmpdir"' EXIT
@@ -37,6 +36,13 @@ if ! grep -q '^IDENTITY_PRIVATE_KEY_B64=' services/platform/.env 2>/dev/null || 
     sed -i '/^IDENTITY_SERVICE_URL=/d;/^IDENTITY_ISSUER=/d;/^IDENTITY_PUBLIC_KEY_B64=/d' "services/${service}/.env"
     printf '\nIDENTITY_SERVICE_URL=http://localhost:4003\nIDENTITY_ISSUER=anpardaz-platform\nIDENTITY_PUBLIC_KEY_B64=%s\n' "$public_b64" >> "services/${service}/.env"
   done
+fi
+
+if [[ ! -f services/platform/.env ]]; then
+  echo "Platform env was not created" >&2; exit 1
+fi
+if ! grep -q '^GUEST_INTERACTION_SECRET=' services/platform/.env; then
+  printf '\nGUEST_INTERACTION_SECRET=%s\n' "$(openssl rand -hex 32)" >> services/platform/.env
 fi
 
 if [[ ! -f services/accounting/.env ]]; then
