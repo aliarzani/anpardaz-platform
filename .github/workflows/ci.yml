@@ -1,14 +1,11 @@
 name: CI
-
 on:
   push:
     branches: [main]
   pull_request:
-
 concurrency:
   group: anpardaz-ci-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -22,6 +19,8 @@ jobs:
             path: services/ansarraf
           - name: platform-service
             path: services/platform
+          - name: accounting-service
+            path: services/accounting
           - name: mobile
             path: apps/mobile
           - name: web
@@ -39,6 +38,7 @@ jobs:
           node-version: 24
           cache: pnpm
           cache-dependency-path: |
+            pnpm-lock.yaml
             apps/mobile/pnpm-lock.yaml
             apps/web/pnpm-lock.yaml
       - name: Install dependencies
