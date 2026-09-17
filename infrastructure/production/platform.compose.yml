@@ -37,3 +37,19 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+
+  platform-hoosh-worker:
+    build:
+      context: ../../services/platform
+      dockerfile: Dockerfile
+    command: ["node", "dist/workers/hoosh.js"]
+    restart: unless-stopped
+    env_file:
+      - ./platform.env
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
