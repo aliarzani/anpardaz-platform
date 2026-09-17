@@ -5,7 +5,14 @@ import { Pool } from 'pg';
 const app = Fastify({ logger: true });
 const port = Number(process.env.PORT ?? 4002);
 const databaseUrl = process.env.DATABASE_URL;
-const pool = databaseUrl ? new Pool({ connectionString: databaseUrl }) : null;
+const pool = databaseUrl
+  ? new Pool({
+      connectionString: databaseUrl,
+      max: 10,
+      connectionTimeoutMillis: 5000,
+      idleTimeoutMillis: 30000,
+    })
+  : null;
 
 await app.register(cors, {
   origin: process.env.CORS_ORIGIN?.split(',').map((value) => value.trim()) ?? true,
