@@ -152,6 +152,24 @@ export function registerSettlementRoutes(app:FastifyInstance,pool:Pool){
         if(!upd.rows[0])throw new Error('reservation_update_failed');
       }
 
+      await client.query(
+        'INSERT INTO accounting_outbox(event_type,aggregate_type,aggregate_id,idempotency_key,payload) VALUES($1,$2,$3,$4,$5)',
+        ['exchange.trade.settled','trade',String(trade.rows[0].id),`ansarraf:trade:${trade.rows[0].id}`,{
+          tradeId:trade.rows[0].id,
+          orderId:order.id,
+          counterpartyOrderId:other.id,
+          buyerCustomerId:buyer.customer_id,
+          sellerCustomerId:seller.customer_id,
+          baseAssetId:buyer.base_asset_id,
+          quoteAssetId:buyer.quote_asset_id,
+          quantity:q,
+          price:String(b.price),
+          quoteAmount,
+          feeAmount,
+          feeAssetId
+        }]
+      );
+
       // Release any excess reservation when the corresponding order is now fully filled.
       for(const oid of [buyer.id,seller.id]){
         const or=await client.query('SELECT quantity FROM orders WHERE id=$1',[oid]);
