@@ -50,30 +50,35 @@ export function registerSettlementRoutes(app:FastifyInstance,pool:Pool){
       if(order.customer_id===other.customer_id)
         throw new Error('self_trade_not_allowed');
 
-      const filled=await client.query(
-        'SELECT order_id,COALESCE(SUM(quantity),0)::text AS filled FROM trades WHERE order_id IN ($1,$2) GROUP BY order_id',
-        [b.orderId,b.counterpartyOrderId]
-      );
-      const filledBy=new Map(filled.rows.map((x:any)=>[Number(x.order_id),x.filled]));
+      // Remaining quantities are calculated by PostgreSQL NUMERIC, never by JS Number.
       const remaining=async(o:any)=>{
         const r=await client.query('SELECT ($1::numeric-COALESCE(SUM(quantity),0))::text AS remaining FROM trades WHERE order_id=$2',[o.quantity,o.id]);
         return r.rows[0].remaining;
       };
       const rem1=await remaining(order),rem2=await remaining(other);
       const q=String(b.quantity);
-      if(Number(q)<=0||Number(q)>Number(rem1)||Number(q)>Number(rem2))throw new Error('trade_quantity_exceeds_remaining');
+      const quantityCheck=await client.query(
+        'SELECT ($1::numeric > 0 AND $1::numeric <= $2::numeric AND $1::numeric <= $3::numeric) AS valid',[q,rem1,rem2]
+      );
+      if(!quantityCheck.rows[0].valid)throw new Error('trade_quantity_exceeds_remaining');
 
-      if(order.order_type==='limit'&&Number(b.price)!==Number(order.price))throw new Error('trade_price_mismatch');
-      if(other.order_type==='limit'&&Number(b.price)!==Number(other.price))throw new Error('trade_price_mismatch');
+      const priceCheck=await client.query(
+        `SELECT ($1::numeric > 0 AND ($2::text <> 'limit' OR $1::numeric=$3::numeric) AND ($4::text <> 'limit' OR $1::numeric=$5::numeric)) AS valid`,
+        [String(b.price),order.order_type,order.price,other.order_type,other.price]
+      );
+      if(!priceCheck.rows[0].valid)throw new Error('trade_price_mismatch');
 
       const buyer=order.side==='buy'?order:other;
       const seller=order.side==='sell'?order:other;
       const feeAmount=b.feeAmount??'0';
       const feeAssetId=b.feeAssetId??null;
-      if(feeAssetId!==null){
-        const expected=buyer.base_asset_id;
-        if(Number(feeAssetId)!==Number(expected))throw new Error('unsupported_fee_asset');
-      }
+      const feeCheck=await client.query(
+        `SELECT ($1::numeric >= 0 AND (($1::numeric=0 AND $2::bigint IS NULL) OR ($1::numeric>0 AND $2::bigint=$3::bigint))) AS valid`,
+        [feeAmount,feeAssetId,buyer.base_asset_id]
+      );
+      if(!feeCheck.rows[0].valid)throw new Error('invalid_fee');
+      // Do not destroy value: fee transfer/accounting is not enabled yet.
+      if(feeAmount !== '0')throw new Error('fee_processing_not_configured');
 
       const quote=await client.query('SELECT ($1::numeric*$2::numeric)::text AS amount',[q,String(b.price)]);
       const quoteAmount=quote.rows[0].amount;
@@ -103,8 +108,11 @@ export function registerSettlementRoutes(app:FastifyInstance,pool:Pool){
       const sellerRemaining=await client.query(
         'SELECT ($1::numeric-$2::numeric)::text AS remaining',[sellerRes.rows[0].amount,sellerRes.rows[0].consumed_amount]
       );
-      if(Number(buyerRemaining.rows[0].remaining)<Number(quoteAmount))throw new Error('buyer_reservation_insufficient');
-      if(Number(sellerRemaining.rows[0].remaining)<Number(q))throw new Error('seller_reservation_insufficient');
+      const reservationCheck=await client.query(
+        'SELECT ($1::numeric >= $2::numeric AND $3::numeric >= $4::numeric) AS valid',
+        [buyerRemaining.rows[0].remaining,quoteAmount,sellerRemaining.rows[0].remaining,q]
+      );
+      if(!reservationCheck.rows[0].valid)throw new Error('reservation_insufficient');
 
       // Consume locked quote from buyer and locked base from seller.
       const bw=await client.query(
@@ -120,7 +128,8 @@ export function registerSettlementRoutes(app:FastifyInstance,pool:Pool){
 
       // Deliver assets. Buy-side base fee is taken from the received base asset.
       const baseCredit=await client.query('SELECT ($1::numeric-$2::numeric)::text AS amount',[q,feeAssetId!==null?feeAmount:'0']);
-      if(Number(baseCredit.rows[0].amount)<0)throw new Error('fee_exceeds_base_fill');
+      const baseCreditCheck=await client.query('SELECT ($1::numeric >= 0) AS valid',[baseCredit.rows[0].amount]);
+      if(!baseCreditCheck.rows[0].valid)throw new Error('fee_exceeds_base_fill');
 
       const bcredit=await client.query(
         'UPDATE wallets SET available_balance=available_balance+$1 WHERE customer_id=$2 AND asset_id=$3 RETURNING id',
@@ -174,12 +183,15 @@ export function registerSettlementRoutes(app:FastifyInstance,pool:Pool){
       for(const oid of [buyer.id,seller.id]){
         const or=await client.query('SELECT quantity FROM orders WHERE id=$1',[oid]);
         const fr=await client.query('SELECT COALESCE(SUM(quantity),0)::text AS filled FROM trades WHERE order_id=$1',[oid]);
-        if(Number(fr.rows[0].filled)>=Number(or.rows[0].quantity)){
+        const fullyFilled=await client.query('SELECT ($1::numeric >= $2::numeric) AS valid',[fr.rows[0].filled,or.rows[0].quantity]);
+        if(fullyFilled.rows[0].valid){
           const rr=await client.query('SELECT * FROM wallet_reservations WHERE order_id=$1 AND status=\'active\' FOR UPDATE',[oid]);
           if(rr.rows[0]){
             const unused=await client.query('SELECT (amount-consumed_amount)::text AS amount FROM wallet_reservations WHERE id=$1',[rr.rows[0].id]);
-            if(Number(unused.rows[0].amount)>0){
-              await client.query('UPDATE wallets SET locked_balance=locked_balance-$1,available_balance=available_balance+$1 WHERE id=$2 AND locked_balance >= $1',[unused.rows[0].amount,rr.rows[0].wallet_id]);
+            const unusedPositive=await client.query('SELECT ($1::numeric > 0) AS valid',[unused.rows[0].amount]);
+            if(unusedPositive.rows[0].valid){
+              const released=await client.query('UPDATE wallets SET locked_balance=locked_balance-$1,available_balance=available_balance+$1 WHERE id=$2 AND locked_balance >= $1 RETURNING id',[unused.rows[0].amount,rr.rows[0].wallet_id]);
+              if(!released.rows[0])throw new Error('unused_reservation_release_failed');
             }
             await client.query('UPDATE wallet_reservations SET status=\'released\',resolved_at=NOW() WHERE id=$1',[rr.rows[0].id]);
           }
