@@ -15,6 +15,7 @@ type Normalized = Omit<MarketQuote, 'stale' | 'fetchedAt'>;
 const REQUEST_TIMEOUT_MS = 5000;
 const STALE_AFTER_MS = 15000;
 const POLL_INTERVAL_MS = 5000;
+const TABDEAL_REFRESH_INTERVAL_MS = 30000;
 
 const TRACKED = new Set([
   'BTC/USDT','ETH/USDT','BNB/USDT','XRP/USDT','ADA/USDT','SOL/USDT',
@@ -89,9 +90,9 @@ async function fetchNobitex(): Promise<Normalized[]> {
     const q = normalize({
       symbol: appSymbol,
       provider: 'nobitex',
-      lastPrice: String(market.latest ?? ''),
-      bidPrice: market.bestBuy == null ? null : String(market.bestBuy),
-      askPrice: market.bestSell == null ? null : String(market.bestSell),
+      lastPrice: quote === 'TOMAN' ? String(Number(market.latest ?? 0) / 10) : String(market.latest ?? ''),
+      bidPrice: market.bestBuy == null ? null : String(quote === 'TOMAN' ? Number(market.bestBuy) / 10 : market.bestBuy),
+      askPrice: market.bestSell == null ? null : String(quote === 'TOMAN' ? Number(market.bestSell) / 10 : market.bestSell),
     });
     if (q) result.push(q);
   }
@@ -120,6 +121,7 @@ async function fetchTabdeal(): Promise<Normalized[]> {
 export class MarketDataService {
   private timer: NodeJS.Timeout | null = null;
   private running = false;
+  private lastTabdealRefresh = 0;
   private readonly cache = new Map<string, MarketQuote>();
   private readonly providerHealth = new Map<string, { status: 'healthy'|'down'; checkedAt: string; error?: string }>();
 
@@ -140,12 +142,14 @@ export class MarketDataService {
     if (this.running) return;
     this.running = true;
     try {
-      const [wallex, nobitex, tabdeal] = await Promise.allSettled([
-        fetchWallex(), fetchNobitex(), fetchTabdeal(),
-      ]);
+      const [wallex, nobitex] = await Promise.allSettled([fetchWallex(), fetchNobitex()]);
       await this.storeProviderResult('wallex', wallex);
       await this.storeProviderResult('nobitex', nobitex);
-      await this.storeProviderResult('tabdeal', tabdeal);
+      if (Date.now() - this.lastTabdealRefresh >= TABDEAL_REFRESH_INTERVAL_MS) {
+        this.lastTabdealRefresh = Date.now();
+        const tabdeal = await Promise.allSettled([fetchTabdeal()]).then(r => r[0]);
+        await this.storeProviderResult('tabdeal', tabdeal);
+      }
     } finally {
       this.running = false;
     }
