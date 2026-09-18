@@ -4,9 +4,11 @@ import { Pool } from 'pg';
 
 const app=Fastify({logger:true});
 const port=Number(process.env.PORT??4004);
-const pool=new Pool({connectionString:process.env.DATABASE_URL,max:10,connectionTimeoutMillis:5000,idleTimeoutMillis:30000});
+const databaseUrl=process.env.DATABASE_URL;
+if(!databaseUrl)throw new Error('DATABASE_URL must be configured');
+const pool=new Pool({connectionString:databaseUrl,max:10,connectionTimeoutMillis:5000,idleTimeoutMillis:30000});
 const internalToken=process.env.ACCOUNTING_INTERNAL_TOKEN;
-if(!internalToken)throw new Error('ACCOUNTING_INTERNAL_TOKEN must be configured');
+if(!internalToken||internalToken.length<32||internalToken.includes('CHANGE_ME'))throw new Error('ACCOUNTING_INTERNAL_TOKEN must be a real random secret of at least 32 characters');
 const authorized=(request:{headers:{authorization?:string}})=>request.headers.authorization===`Bearer ${internalToken}`;
 const DECIMAL=/^(?:0|[1-9]\d{0,19})(?:\.\d{1,18})?$/;
 const validAmount=(v:unknown)=>typeof v==='string'&&DECIMAL.test(v)&&v!=='0'&&!/^0(?:\.0{1,18})?$/.test(v);
