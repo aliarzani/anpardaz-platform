@@ -94,7 +94,7 @@ export function registerModerationRoutes(app: FastifyInstance, pool: Pool) {
   app.post('/api/v1/community/likes', async (req, reply) => {
     const b = (req.body ?? {}) as { targetType?: string; targetId?: string };
     if (!LIKE_TARGETS.includes(b.targetType as any) || !b.targetId) return reply.code(400).send({ error: 'invalid_target' });
-    const auth = optionalAuth(req); const guest = guestToken(req);
+    const auth = await optionalAuth(pool, req); const guest = guestToken(req);
     if (!auth && !guest) return reply.code(401).send({ error: 'guest_token_required' });
     const gh = auth ? null : guestHash(guest!); const actorKey = auth ? `u:${auth.sub}` : `g:${gh}`;
     if (!(await consumeRate(pool, actorKey, 'like', auth ? 120 : 30))) return reply.code(429).send({ error: 'rate_limited' });
@@ -129,7 +129,7 @@ export function registerModerationRoutes(app: FastifyInstance, pool: Pool) {
   app.post('/api/v1/community/reports', async (req, reply) => {
     const b = (req.body ?? {}) as { targetType?: string; targetId?: string; reason?: string; details?: string };
     if (!['comment','like',...TARGETS].includes(b.targetType ?? '') || !b.targetId || !b.reason?.trim()) return reply.code(400).send({ error: 'invalid_report' });
-    const auth = optionalAuth(req); const guest = guestToken(req);
+    const auth = await optionalAuth(pool, req); const guest = guestToken(req);
     if (!auth && !guest) return reply.code(401).send({ error: 'guest_token_required' });
     const gh = auth ? null : guestHash(guest!);
     if (gh) {
