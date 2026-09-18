@@ -49,7 +49,7 @@ export function registerTradingRoutes(app:FastifyInstance,pool:Pool){
      // Match only after the order transaction commits. Settlement performs the authoritative atomic checks.
      const internalToken=process.env.ANSARRAF_INTERNAL_TOKEN;
      if(internalToken){
-       const match=await app.inject({method:'POST',url:\`/internal/v1/orders/\${o.id}/match\`,headers:{authorization:\`Bearer \${internalToken}\`},payload:{maxTrades:100}});
+       const match=await app.inject({method:'POST',url:`/internal/v1/orders/${o.id}/match`,headers:{authorization:\`Bearer \${internalToken}\`},payload:{maxTrades:100}});
        if(match.statusCode>=400)req.log.warn({orderId:o.id,status:match.statusCode},'post-order matching pass failed');
      }
      const refreshed=await pool.query('SELECT * FROM orders WHERE id=$1',[o.id]);
