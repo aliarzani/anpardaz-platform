@@ -1,5 +1,5 @@
-import type {FastifyInstance,FastifyRequest} from 'fastify';import type {Pool} from 'pg';import {requireAuth} from '../auth.js';import {hasPermission} from '../permissions.js';
-type R=FastifyRequest&{auth:{sub:string;role:string}};const r=(x:FastifyRequest)=>x as R;const deny=(p:any)=>p.code(403).send({error:'forbidden'});
+import type {FastifyInstance,FastifyRequest} from 'fastify';import type {Pool} from 'pg';import {requireAuth} from '../auth.js';import type { AuthClaims } from '../auth.js';import {hasPermission} from '../permissions.js';
+type R=FastifyRequest&{auth:AuthClaims};const r=(x:FastifyRequest)=>x as R;const deny=(p:any)=>p.code(403).send({error:'forbidden'});
 async function audit(pool:Pool,a:R,action:string,type:string,id:string){await pool.query("INSERT INTO audit_logs(identity_id,actor_type,actor_identity_id,action,resource_type,resource_id) VALUES($1,'admin',$1,$2,$3,$4)",[a.auth.sub,action,type,id]);}
 export function registerAdminEcosystemRoutes(app:FastifyInstance,pool:Pool){
  app.get('/api/v1/admin/banner',{preHandler:requireAuth},async(req,reply)=>{const a=r(req);if(!(await hasPermission(pool,a.auth,'content.read')))return deny(reply);return{listings:(await pool.query('SELECT b.*,u.identity_id,u.email FROM banner_listings b JOIN platform_users u ON u.id=b.user_id ORDER BY b.created_at DESC LIMIT 500')).rows};});
