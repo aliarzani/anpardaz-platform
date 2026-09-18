@@ -12,10 +12,13 @@ const guestToken = (req: FastifyRequest) => {
   const value = req.headers['x-guest-token'];
   return typeof value === 'string' && value.length >= 16 && value.length <= 256 ? value : null;
 };
-const optionalAuth = (req: FastifyRequest) => {
+const optionalAuth = async (pool: Pool, req: FastifyRequest) => {
   const value = req.headers.authorization;
   if (!value?.startsWith('Bearer ')) return null;
-  return verifyIdentityToken(value.slice(7));
+  const auth = verifyIdentityToken(value.slice(7));
+  if (!auth) return null;
+  const active = await pool.query(`SELECT 1 FROM platform_users WHERE identity_id=$1 AND status='active' LIMIT 1`, [auth.sub]);
+  return active.rows[0] ? auth : null;
 };
 const requestIpHash = (req: FastifyRequest) => hash(`${process.env.GUEST_INTERACTION_SECRET ?? 'CHANGE_ME_GUEST_INTERACTION_SECRET'}:${req.ip}`);
 
@@ -56,7 +59,7 @@ export function registerModerationRoutes(app: FastifyInstance, pool: Pool) {
   app.post('/api/v1/community/comments', async (req, reply) => {
     const b = (req.body ?? {}) as { targetType?: string; targetId?: string; body?: string; parentId?: number };
     if (!TARGETS.includes(b.targetType as any) || !b.targetId || !b.body?.trim() || b.body.trim().length > 10000) return reply.code(400).send({ error: 'invalid_comment' });
-    const auth = optionalAuth(req);
+    const auth = await optionalAuth(pool,req);
     const guest = guestToken(req);
     if (!auth && !guest) return reply.code(401).send({ error: 'guest_token_required' });
     const actorKey = auth ? `u:${auth.sub}` : `g:${guestHash(guest!)}`;
@@ -129,6 +132,10 @@ export function registerModerationRoutes(app: FastifyInstance, pool: Pool) {
     const auth = optionalAuth(req); const guest = guestToken(req);
     if (!auth && !guest) return reply.code(401).send({ error: 'guest_token_required' });
     const gh = auth ? null : guestHash(guest!);
+    if (gh) {
+      const blocked = await pool.query(`SELECT 1 FROM guest_interaction_blocks WHERE guest_token_hash=$1 AND (expires_at IS NULL OR expires_at>NOW())`, [gh]);
+      if (blocked.rows[0]) return reply.code(403).send({ error: 'guest_blocked' });
+    }
     if (!(await consumeRate(pool, auth ? `u:${auth.sub}` : `g:${gh}`, 'report', 10))) return reply.code(429).send({ error: 'rate_limited' });
     const r = await pool.query(`INSERT INTO community_reports(reporter_identity_id,reporter_guest_token_hash,target_type,target_id,reason,details) VALUES($1,$2,$3,$4,$5,$6) RETURNING id,status,created_at`, [auth?.sub ?? null, gh, b.targetType, b.targetId, b.reason.trim().slice(0,500), b.details?.trim().slice(0,5000) ?? null]);
     return reply.code(201).send({ report: r.rows[0] });
