@@ -1,4 +1,4 @@
-import type {FastifyInstance,FastifyRequest,FastifyReply} from 'fastify';
+import type {FastifyInstance,FastifyRequest} from 'fastify';
 import type {Pool} from 'pg';
 import {createHash} from 'node:crypto';
 import {ensureCustomer,requireAuth,type AuthClaims} from '../auth.js';
@@ -33,11 +33,10 @@ export function registerTradingRoutes(app:FastifyInstance,pool:Pool){
      const order=await client.query('INSERT INTO orders(customer_id,base_asset_id,quote_asset_id,side,order_type,quantity,price,market_buy_quote_amount,idempotency_key) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',[customer,b.baseAssetId,b.quoteAssetId,b.side,b.orderType,b.quantity,b.price??null,marketBuyQuote,b.idempotencyKey]);
      const o=order.rows[0];
      const reserveAssetId=b.side==='sell'?b.baseAssetId:b.quoteAssetId;
-     const reserveAmount=b.side==='sell'?b.quantity:(b.orderType==='limit'?null:marketBuyQuote);
      const reserveQuery=b.side==='sell'?'SELECT $1::numeric AS amount':'SELECT $1::numeric*$2::numeric AS amount';
      const reserveParams=b.side==='sell'?[b.quantity]:(b.orderType==='limit'?[b.quantity,b.price]:[marketBuyQuote]);
      await client.query('INSERT INTO wallets(customer_id,asset_id) VALUES($1,$2) ON CONFLICT(customer_id,asset_id) DO NOTHING',[customer,reserveAssetId]);
-     const wallet=await client.query('SELECT id,available_balance FROM wallets WHERE customer_id=$1 AND asset_id=$2 FOR UPDATE',[customer,reserveAssetId]);
+     const wallet=await client.query('SELECT id FROM wallets WHERE customer_id=$1 AND asset_id=$2 FOR UPDATE',[customer,reserveAssetId]);
      if(!wallet.rows[0])throw new Error('wallet_not_found');
      const reserved=await client.query(reserveQuery,reserveParams);
      const reserveAmountValue=reserved.rows[0].amount;
