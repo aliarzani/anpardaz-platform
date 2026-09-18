@@ -47,6 +47,8 @@ export function registerSettlementRoutes(app:FastifyInstance,pool:Pool){
         throw new Error('trade_order_not_open');
       if(order.base_asset_id!==other.base_asset_id||order.quote_asset_id!==other.quote_asset_id||order.side===other.side)
         throw new Error('invalid_trade_counterparty');
+      if(order.customer_id===other.customer_id)
+        throw new Error('self_trade_not_allowed');
 
       const filled=await client.query(
         'SELECT order_id,COALESCE(SUM(quantity),0)::text AS filled FROM trades WHERE order_id IN ($1,$2) GROUP BY order_id',
