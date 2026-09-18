@@ -62,8 +62,11 @@ async function fetchWallex(): Promise<Normalized[]> {
   const symbols = data?.result?.symbols;
   if (!symbols || typeof symbols !== 'object') throw new Error('wallex_invalid_response');
   const result: Normalized[] = [];
-  for (const [appSymbol, providerSymbol] of Object.entries(PROVIDER_SYMBOLS)) {
-    const market = symbols[providerSymbol as string];
+  for (const market of Object.values(symbols) as any[]) {
+    const base = String(market?.baseAsset ?? '').toUpperCase();
+    const quote = String(market?.quoteAsset ?? '').toUpperCase();
+    if (!base || !['USDT','TMN'].includes(quote) || base === quote) continue;
+    const appSymbol = `${base}/${quote === 'TMN' ? 'TOMAN' : 'USDT'}`;
     const stats = market?.stats;
     const q = normalize({
       symbol: appSymbol,
@@ -82,17 +85,17 @@ async function fetchNobitex(): Promise<Normalized[]> {
   const stats = data?.stats;
   if (!stats || typeof stats !== 'object') throw new Error('nobitex_invalid_response');
   const result: Normalized[] = [];
-  for (const appSymbol of TRACKED) {
-    const [base, quote] = appSymbol.split('/');
-    const providerSymbol = `${base.toLowerCase()}-${quote === 'TOMAN' ? 'rls' : quote.toLowerCase()}`;
-    const market = stats[providerSymbol];
-    if (!market) continue;
+  for (const [marketSymbol, market] of Object.entries(stats) as [string, any][]) {
+    const [base, quote] = marketSymbol.toUpperCase().split('-');
+    if (!base || !['RLS','USDT'].includes(quote) || base === quote) continue;
+    const appSymbol = `${base}/${quote === 'RLS' ? 'TOMAN' : 'USDT'}`;
+    const divisor = quote === 'RLS' ? 10 : 1;
     const q = normalize({
       symbol: appSymbol,
       provider: 'nobitex',
-      lastPrice: quote === 'TOMAN' ? String(Number(market.latest ?? 0) / 10) : String(market.latest ?? ''),
-      bidPrice: market.bestBuy == null ? null : String(quote === 'TOMAN' ? Number(market.bestBuy) / 10 : market.bestBuy),
-      askPrice: market.bestSell == null ? null : String(quote === 'TOMAN' ? Number(market.bestSell) / 10 : market.bestSell),
+      lastPrice: String(Number(market.latest ?? 0) / divisor),
+      bidPrice: market.bestBuy == null ? null : String(Number(market.bestBuy) / divisor),
+      askPrice: market.bestSell == null ? null : String(Number(market.bestSell) / divisor),
     });
     if (q) result.push(q);
   }
